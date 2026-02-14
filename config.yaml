@@ -1,0 +1,112 @@
+general:
+  mode: "paper"  # paper / live
+  log_level: "info"
+  timezone: "Asia/Seoul"
+
+data_agent:
+  symbols:
+    - symbol: "BTC"
+      binance_pair: "BTCUSDT"
+      hyperliquid_pair: "BTC"
+    - symbol: "ETH"
+      binance_pair: "ETHUSDT"
+      hyperliquid_pair: "ETH"
+
+  polling_interval_ms: 1000
+  candle_interval: "1m"
+  candle_lookback: 100
+
+  binance:
+    base_url: "https://fapi.binance.com"
+    reconnect_delay_ms: 5000
+    max_reconnect_attempts: 10
+
+  hyperliquid:
+    base_url: "https://api.hyperliquid.xyz"
+    request_timeout_ms: 5000
+
+  storage:
+    max_snapshots_per_symbol: 3600
+    cleanup_interval_min: 30
+
+analysis_agent:
+  spread:
+    threshold_high: 0.05
+    threshold_extreme: 0.15
+    lookback_count: 60
+  indicators:
+    rsi:
+      period: 14
+      overbought: 70
+      oversold: 30
+    macd:
+      fast: 12
+      slow: 26
+      signal: 9
+    bollinger:
+      period: 20
+      std_dev: 2.0
+    ma:
+      short: 7
+      medium: 25
+      long: 99
+  weights:
+    spread: 0.30
+    rsi: 0.15
+    macd: 0.20
+    bollinger: 0.15
+    ma: 0.20
+  signal:
+    entry_threshold: 0.5
+    min_confidence: 0.4
+    cooldown_seconds: 30
+  risk:
+    atr_period: 14
+    stop_loss_multiplier: 2.0
+    take_profit_multiplier: 3.0
+    min_risk_reward_ratio: 1.5
+
+trade_agent:
+  hyperliquid:
+    base_url: "https://api.hyperliquid.xyz"
+    slippage: 0.01
+  leverage:
+    default: 5
+    max: 10
+  risk:
+    risk_per_trade: 0.02
+    max_position_pct: 0.10
+    max_daily_loss: 0.05
+    max_concurrent_positions: 3
+    max_daily_trades: 50
+    min_balance_usdc: 100
+    min_signal_confidence: 0.4
+  trailing_stop:
+    enabled: true
+    activation_pct: 1.5
+    trail_pct: 0.8
+  safety:
+    kill_switch_file: "data/KILL_SWITCH"
+    max_consecutive_api_errors: 5
+    price_anomaly_threshold: 5.0
+
+wallet_agent:
+  monitoring:
+    balance_check_interval_sec: 30
+    low_balance_alert_usdc: 300
+  coinbase:
+    base_url: "https://api.cdp.coinbase.com/v2"
+    transfer_network: "arbitrum"
+  transfers:
+    max_single_transfer: 1000
+    max_daily_transfer: 5000
+    auto_fund_enabled: true
+    auto_fund_buffer_pct: 0.20
+  security:
+    min_reserve_coinbase: 500
+    min_reserve_hyperliquid: 200
+    whitelist: []
+
+database:
+  path: "data/ai-trader.db"
+  wal_mode: true

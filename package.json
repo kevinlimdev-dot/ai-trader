@@ -1,0 +1,25 @@
+{
+  "name": "ai-trader",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "collect": "bun run skills/data-collector/scripts/collect-prices.ts",
+    "analyze": "bun run skills/analyzer/scripts/analyze.ts",
+    "trade": "bun run skills/trader/scripts/execute-trade.ts",
+    "wallet": "bun run skills/wallet-manager/scripts/manage-wallet.ts",
+    "setup-db": "bun run src/db/schema.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nktkas/hyperliquid": "latest",
+    "yaml": "latest",
+    "technicalindicators": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.2.3",
+    "typescript": "latest",
+    "viem": "^2.45.3"
+  }
+}
