@@ -510,6 +510,125 @@ async function autoFund(
   await fundHyperliquid(cb, hl, fundAmount);
 }
 
+// ─── 자동 리밸런싱 (단일 입금 포인트 → 자동 배분) ───
+
+async function autoRebalance(
+  hl: HyperliquidService,
+  cb: CoinbaseService,
+): Promise<void> {
+  const config = loadConfig();
+  const walletConfig = config.wallet_agent;
+
+  if (!walletConfig.transfers.auto_fund_enabled) {
+    console.log(JSON.stringify({ status: "disabled", message: "자동 자금 배분이 비활성화되어 있습니다." }));
+    return;
+  }
+
+  const minHl = walletConfig.security.min_reserve_hyperliquid;
+  const minCb = walletConfig.security.min_reserve_coinbase;
+  const bufferPct = walletConfig.transfers.auto_fund_buffer_pct;
+  const maxExcessPct = walletConfig.transfers.auto_withdraw_excess_pct ?? 0.5; // HL에 과도 보유 시 회수 비율
+
+  let hlBalance: number;
+  let cbBalance: number;
+
+  if (isPaperMode()) {
+    const latest = getLatestBalance();
+    hlBalance = latest?.hyperliquid_balance ?? 5000;
+    cbBalance = latest?.coinbase_balance ?? 5000;
+  } else {
+    [hlBalance, cbBalance] = await Promise.all([
+      hl.getBalance(),
+      cb.getUsdcBalance(),
+    ]);
+  }
+
+  const totalBalance = hlBalance + cbBalance;
+  const actions: { direction: string; amount: number; reason: string }[] = [];
+
+  // Case 1: HL 잔고 부족 → Coinbase에서 HL로 보내기
+  if (hlBalance < minHl) {
+    const target = minHl * (1 + bufferPct);
+    const needed = target - hlBalance;
+    const available = cbBalance - minCb;
+
+    if (available > 10 && needed > 10) {
+      const fundAmount = Math.min(
+        needed,
+        available,
+        walletConfig.transfers.max_single_transfer,
+      );
+      actions.push({
+        direction: "coinbase_to_hl",
+        amount: fundAmount,
+        reason: `HL 잔고 부족 (${hlBalance.toFixed(2)} < ${minHl} USDC)`,
+      });
+    }
+  }
+
+  // Case 2: HL 잔고 과다 → HL에서 Coinbase로 회수
+  // (거래에 필요한 것 이상으로 많이 있으면 안전을 위해 Coinbase로 회수)
+  const maxHl = walletConfig.security.max_reserve_hyperliquid ?? (totalBalance * 0.6);
+  if (hlBalance > maxHl && hlBalance > minHl * 2) {
+    const excess = hlBalance - maxHl;
+    const withdrawAmount = Math.min(
+      excess * maxExcessPct,
+      walletConfig.transfers.max_single_transfer,
+    );
+    if (withdrawAmount > 10) {
+      // HL→CB 회수는 HL 충전이 필요없을 때만
+      if (actions.length === 0) {
+        actions.push({
+          direction: "hl_to_coinbase",
+          amount: withdrawAmount,
+          reason: `HL 잔고 과다 (${hlBalance.toFixed(2)} > ${maxHl.toFixed(2)} USDC), 안전을 위해 Coinbase로 회수`,
+        });
+      }
+    }
+  }
+
+  if (actions.length === 0) {
+    console.log(JSON.stringify({
+      status: "balanced",
+      message: "자금 배분이 적절합니다.",
+      balances: {
+        coinbase: cbBalance,
+        hyperliquid: hlBalance,
+        total: totalBalance,
+      },
+      thresholds: { min_hl: minHl, min_cb: minCb, max_hl: maxHl },
+    }, null, 2));
+    return;
+  }
+
+  // 액션 실행
+  const results: { action: string; result: string }[] = [];
+
+  for (const action of actions) {
+    logger.info("자동 리밸런싱 실행", action);
+
+    try {
+      if (action.direction === "coinbase_to_hl") {
+        await fundHyperliquid(cb, hl, action.amount);
+        results.push({ action: `CB→HL ${action.amount.toFixed(2)} USDC`, result: "success" });
+      } else if (action.direction === "hl_to_coinbase") {
+        await withdrawToCoinbase(hl, cb, action.amount);
+        results.push({ action: `HL→CB ${action.amount.toFixed(2)} USDC`, result: "success" });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      results.push({ action: `${action.direction} ${action.amount.toFixed(2)}`, result: `failed: ${msg}` });
+      logger.error("리밸런싱 실패", { action, error: msg });
+    }
+  }
+
+  console.log(JSON.stringify({
+    status: "rebalanced",
+    balances_before: { coinbase: cbBalance, hyperliquid: hlBalance },
+    actions: results,
+  }, null, 2));
+}
+
 async function dailyReport(hl: HyperliquidService, cb: CoinbaseService): Promise<void> {
   let balances: { coinbase: number; hyperliquid: number; total: number };
 
@@ -574,7 +693,7 @@ async function main(): Promise<void> {
   const cb = new CoinbaseService();
 
   // 실제 모드에서 하이퍼리퀴드 지갑 초기화
-  if (!isPaperMode() && ["balance", "withdraw", "process-requests", "auto-fund", "daily-report"].includes(action)) {
+  if (!isPaperMode() && ["balance", "withdraw", "process-requests", "auto-fund", "auto-rebalance", "daily-report"].includes(action)) {
     const pk = process.env.HYPERLIQUID_PRIVATE_KEY;
     if (pk) await hl.initWallet(pk);
   }
@@ -602,6 +721,9 @@ async function main(): Promise<void> {
       break;
     case "auto-fund":
       await autoFund(hl, cb);
+      break;
+    case "auto-rebalance":
+      await autoRebalance(hl, cb);
       break;
     case "daily-report":
       await dailyReport(hl, cb);

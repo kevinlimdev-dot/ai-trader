@@ -108,10 +108,12 @@ export interface AppConfig {
       max_daily_transfer: number;
       auto_fund_enabled: boolean;
       auto_fund_buffer_pct: number;
+      auto_withdraw_excess_pct?: number;
     };
     security: {
       min_reserve_coinbase: number;
       min_reserve_hyperliquid: number;
+      max_reserve_hyperliquid?: number;
       whitelist: string[];
     };
   };

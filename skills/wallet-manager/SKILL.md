@@ -19,9 +19,10 @@ bunx awal auth verify <flowId> <code>
 
 ## 사용 시나리오
 
-- 사용자가 "잔고 확인해", "코인베이스에서 하이퍼리퀴드로 500 USDC 보내줘" 요청 시
-- trader 스킬에서 잔고 부족으로 자금 요청이 발생했을 때
-- cron 작업에서 주기적 잔고 확인 시
+- 사용자는 **Coinbase Agentic Wallet 하나에만 USDC 입금**
+- 봇이 HyperLiquid 거래에 필요한 자금을 **자동으로 배분**
+- 거래 전 `auto-rebalance`로 잔고 부족을 사전 방지
+- HyperLiquid에 과도한 자금이 쌓이면 Coinbase로 자동 회수
 
 ## 실행 방법
 
@@ -38,6 +39,11 @@ bun run {baseDir}/scripts/manage-wallet.ts --action fund --amount 500
 자금 인출 (하이퍼리퀴드 → 코인베이스):
 ```
 bun run {baseDir}/scripts/manage-wallet.ts --action withdraw --amount 500
+```
+
+자동 리밸런싱 (양방향 자동 배분 — 파이프라인에 포함):
+```
+bun run {baseDir}/scripts/manage-wallet.ts --action auto-rebalance
 ```
 
 대기 중인 자금 요청 처리:

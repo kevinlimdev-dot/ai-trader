@@ -144,6 +144,8 @@ async function runAwalCli(args: string[]): Promise<AwalCliResult> {
 }
 
 export class CoinbaseService {
+  private cachedAddress: string | null = null;
+
   /**
    * 인증 상태 확인
    *
@@ -166,25 +168,31 @@ export class CoinbaseService {
   }
 
   /**
-   * 지갑 주소 조회
+   * 지갑 주소 조회 (캐시 포함)
    *
    * 실제 응답: "0xB9C971e2d682d4e90b1dd0eaCA7385e6887F3f76" (문자열)
    */
   async getAddress(): Promise<string> {
+    if (this.cachedAddress) return this.cachedAddress;
+
     const result = await runAwalCli(["address"]);
 
     if (!result.success) {
       throw new Error(`지갑 주소 조회 실패: ${result.error}`);
     }
 
+    let addr = "";
     // 문자열로 직접 반환됨
     if (typeof result.data === "string") {
-      return result.data;
+      addr = result.data;
+    } else {
+      // 객체인 경우 address 필드 시도
+      const data = result.data as Record<string, unknown>;
+      addr = (data?.address as string) || "";
     }
 
-    // 객체인 경우 address 필드 시도
-    const data = result.data as Record<string, unknown>;
-    return (data?.address as string) || "";
+    if (addr) this.cachedAddress = addr;
+    return addr;
   }
 
   /**

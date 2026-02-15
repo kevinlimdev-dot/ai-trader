@@ -1,6 +1,7 @@
 import { HttpTransport, InfoClient, ExchangeClient } from "@nktkas/hyperliquid";
 import { createLogger } from "../utils/logger";
 import { loadConfig } from "../utils/config";
+import { getHyperliquidRateLimiter } from "../utils/rate-limiter";
 
 const logger = createLogger("HyperLiquid");
 
@@ -93,6 +94,8 @@ export class HyperliquidService {
   // ─── Public API ───
 
   async getAllMidPrices(): Promise<Record<string, number>> {
+    const rl = getHyperliquidRateLimiter();
+    await rl.acquire(1);
     const mids = await this.infoClient.allMids();
     const result: Record<string, number> = {};
     for (const [coin, price] of Object.entries(mids)) {
@@ -102,6 +105,8 @@ export class HyperliquidService {
   }
 
   async getL2Book(coin: string): Promise<{ bestBid: number; bestAsk: number }> {
+    const rl = getHyperliquidRateLimiter();
+    await rl.acquire(1);
     const book = await this.infoClient.l2Book({ coin });
     if (!book || !book.levels) {
       return { bestBid: 0, bestAsk: 0 };
@@ -123,6 +128,8 @@ export class HyperliquidService {
     if (this.metaCache && (now - this.metaCacheTime) < HyperliquidService.META_TTL_MS) {
       return this.metaCache;
     }
+    const rl = getHyperliquidRateLimiter();
+    await rl.acquire(1);
     const meta = await this.infoClient.meta() as HlMeta;
     this.metaCache = meta;
     this.metaCacheTime = now;
@@ -149,6 +156,8 @@ export class HyperliquidService {
 
   async getUserState(): Promise<HlUserState> {
     if (!this.userAddress) throw new Error("지갑이 초기화되지 않았습니다");
+    const rl = getHyperliquidRateLimiter();
+    await rl.acquire(1);
     return this.infoClient.clearinghouseState({
       user: this.userAddress as `0x${string}`,
     }) as Promise<HlUserState>;
@@ -197,6 +206,8 @@ export class HyperliquidService {
 
     logger.info("시장가 주문 실행", { coin, isBuy, size: formattedSize, reduceOnly, limitPx });
 
+    const rl = getHyperliquidRateLimiter();
+    await rl.acquire(2); // 주문은 weight 2
     const result = await this.exchangeClient.order({
       orders: [
         {

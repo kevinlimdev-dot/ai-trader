@@ -202,8 +202,108 @@ src/models/
 
 ---
 
+## 7. Rate Limiter (거래소 API 쿼터 관리)
+
+거래소 API의 요청 한도를 초과하지 않도록 **Token Bucket** 방식의 Rate Limiter를 적용한다. `src/utils/rate-limiter.ts`에 구현되어 있으며, 각 서비스에서 싱글턴 인스턴스를 사용한다.
+
+### 7.1 바이낸스 선물 API 제한
+
+| 항목 | 값 |
+|------|-----|
+| IP당 한도 | 2,400 req/min (40 req/s) |
+| 적용 안전 마진 | 70% → **28 req/s** (1,680/min) |
+| 버스트 허용량 | 60 토큰 |
+| Weight 기반 | 대부분 1, klines=5, depth=5~50 |
+
+### 7.2 하이퍼리퀴드 API 제한
+
+| 항목 | 값 |
+|------|-----|
+| 공식 한도 | 1,200 req/min (20 req/s) |
+| 적용 안전 마진 | 70% → **14 req/s** (840/min) |
+| 버스트 허용량 | 30 토큰 |
+
+### 7.3 API Weight 매핑
+
+```typescript
+// 바이낸스
+const BINANCE_WEIGHTS = {
+  "/fapi/v1/premiumIndex": 1,
+  "/fapi/v1/depth": 5,
+  "/fapi/v1/ticker/24hr": 1,
+  "/fapi/v1/klines": 5,
+};
+
+// 하이퍼리퀴드
+const HYPERLIQUID_WEIGHTS = {
+  allMids: 1,
+  l2Book: 1,
+  meta: 1,
+  clearinghouseState: 1,
+  order: 2,
+};
+```
+
+### 7.4 서비스 연동
+
+각 서비스 (`binance.service.ts`, `hyperliquid.service.ts`)에서 API 호출 전 `await limiter.acquire(weight)` 로 토큰을 소비한다. 토큰이 부족하면 자동으로 대기 후 재시도한다.
+
+```typescript
+// binance.service.ts 예시
+import { getBinanceRateLimiter, BINANCE_WEIGHTS } from "../utils/rate-limiter";
+
+const limiter = getBinanceRateLimiter();
+await limiter.acquire(BINANCE_WEIGHTS["/fapi/v1/klines"]); // weight 5
+const data = await fetch(url);
+```
+
+### 7.5 429 응답 처리
+
+바이낸스에서 429 (Rate Limit Exceeded) 응답 시 `Retry-After` 헤더를 존중하여 대기한 뒤 재시도한다.
+
+---
+
+## 8. 실시간 가격 데이터 (대시보드 연동)
+
+대시보드에서 실시간 가격을 표시하기 위해 DB의 최신 스냅샷을 조회하는 API가 제공된다.
+
+### 8.1 API 엔드포인트
+
+```
+GET /api/live-prices
+```
+
+### 8.2 응답 형태
+
+```json
+[
+  {
+    "symbol": "BTC",
+    "binance_price": 65432.10,
+    "hl_price": 65420.50,
+    "spread_pct": 0.0177,
+    "timestamp": "2026-02-14T12:00:00.123Z",
+    "binance_change_pct": 1.23,
+    "hl_change_pct": 1.15
+  }
+]
+```
+
+### 8.3 대시보드 갱신 주기
+
+| 데이터 | 주기 | 비고 |
+|--------|------|------|
+| 실시간 가격 | 3초 | 대시보드 메인 Live Prices 패널 |
+| 시그널/대시보드 | 10초 | KPI, 거래 내역, 포지션 |
+| 차트 | 60초 | Lightweight Charts 업데이트 |
+
+이 계층적 폴링은 API 쿼터를 절약하면서도 핵심 데이터의 실시간성을 보장한다.
+
+---
+
 ## 관련 문서
 
 - [01-overview.md](./01-overview.md) — 프로젝트 개요
 - [03-analysis-agent.md](./03-analysis-agent.md) — analyzer 스킬 (데이터 소비자)
 - [06-config-and-deployment.md](./06-config-and-deployment.md) — config.yaml 전체 구조
+- [08-dashboard.md](./08-dashboard.md) — 웹 대시보드 상세 스펙

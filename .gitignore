@@ -16,3 +16,6 @@ data/KILL_SWITCH
 *.log
 bun.lockb
 bun.lock
+dashboard/.svelte-kit/
+dashboard/build/
+dashboard/node_modules/

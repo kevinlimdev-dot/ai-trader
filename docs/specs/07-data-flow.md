@@ -23,22 +23,48 @@ Gateway 내장 cron이 주기적으로 **isolated session**을 생성하고, 에
      ▼
   에이전트가 AGENTS.md 규칙에 따라:
      │
-     ├── exec "bun run skills/data-collector/scripts/collect-prices.ts"
+     ├── 1. exec "bun run skills/data-collector/scripts/collect-prices.ts"
      │     └── 출력: data/snapshots/latest.json
      │
-     ├── exec "bun run skills/analyzer/scripts/analyze.ts"
+     ├── 2. exec "bun run skills/analyzer/scripts/analyze.ts"
      │     └── 입력: data/snapshots/latest.json
      │     └── 출력: data/signals/latest.json
      │
-     ├── (시그널이 LONG/SHORT인 경우)
+     ├── 3. exec "bun run skills/wallet-manager/scripts/manage-wallet.ts --action auto-rebalance"
+     │     └── Coinbase ↔ HyperLiquid 잔고 리밸런싱 (실패해도 계속)
+     │
+     ├── 4. (시그널이 LONG/SHORT인 경우)
      │   exec "bun run skills/trader/scripts/execute-trade.ts"
      │     └── 입력: data/signals/latest.json
      │     └── 출력: SQLite 저장 + stdout 결과
      │
+     ├── 5. exec "bun run skills/trader/scripts/execute-trade.ts --action monitor"
+     │     └── 포지션 SL/TP/트레일링 스탑 체크
+     │
      └── 결과를 Telegram으로 announce
 ```
 
-### 2.2 대화 기반 (사용자 명령)
+### 2.2 대시보드 기반 (Run All)
+
+웹 대시보드의 **Run All** 버튼으로 동일한 5단계 파이프라인을 수동 실행한다. `Bun.spawn`으로 각 스크립트를 순차 실행하며, 진행 상황이 실시간으로 UI에 반영된다.
+
+```
+[대시보드 Run All 클릭]
+     │
+     ▼
+  SvelteKit API → bot.ts runPipeline()
+     │
+     ├── step 1: Bun.spawn("bun run collect")    → 성공/실패 반환
+     ├── step 2: Bun.spawn("bun run analyze")    → 성공/실패 반환
+     ├── step 3: Bun.spawn("bun run auto-rebalance") → 실패해도 계속
+     ├── step 4: Bun.spawn("bun run trade")      → 성공/실패 반환
+     └── step 5: Bun.spawn("bun run monitor")    → 성공/실패 반환
+     │
+     ▼
+  대시보드에 각 단계 결과 표시 (✅/❌ + 소요 시간)
+```
+
+### 2.3 대화 기반 (사용자 명령)
 
 Telegram/Discord에서 사용자가 직접 명령하면, 에이전트가 적절한 스킬을 호출한다.
 
@@ -58,7 +84,7 @@ Telegram/Discord에서 사용자가 직접 명령하면, 에이전트가 적절�
   결과를 사용자에게 응답
 ```
 
-### 2.3 Sub-Agent (병렬 처리)
+### 2.4 Sub-Agent (병렬 처리)
 
 필요 시 `sessions_spawn`으로 백그라운드 작업을 병렬로 실행한다.
 
@@ -146,7 +172,17 @@ Agent:            시그널 확인 (LONG/SHORT?)
   Agent:          "진입 조건 미충족, 대기"
 ```
 
-### 4.2 잔고 부족 시
+### 4.2 자동 리밸런싱
+
+```
+Agent/Dashboard → exec:  bun run manage-wallet.ts --action auto-rebalance
+exec:            Coinbase 잔고 = 2,000 USDC, HL 잔고 = 150 USDC (< min 200)
+exec:            충전 필요량 계산: 200 * 1.2 (buffer) - 150 = 90 USDC
+exec → Coinbase: 90 USDC → HL 전송 요청
+exec:            { status: "rebalanced", direction: "coinbase→hl", amount: 90 }
+```
+
+### 4.3 잔고 부족 시 (수동 충전)
 
 ```
 Agent → exec:     bun run execute-trade.ts
@@ -158,7 +194,7 @@ exec → Agent:     { status: "funded", amount: 500 }
 Agent → exec:     bun run execute-trade.ts  (재시도)
 ```
 
-### 4.3 긴급 상황
+### 4.4 긴급 상황
 
 ```
 [1분 내 BTC -5% 급락 감지]
@@ -220,16 +256,22 @@ OpenClaw Gateway 자체의 안정성:
 
 ---
 
-## 7. 페이퍼 트레이딩
+## 7. 페이퍼/라이브 트레이딩 모드
 
-`config.yaml`에서 `general.mode: "paper"`로 설정하면, trader 스킬이 실제 API 대신 시뮬레이션 모드로 동작한다.
+### 7.1 모드 전환
+
+`config.yaml`의 `general.mode` 값으로 제어하며, **대시보드에서 실시간 전환이 가능**하다.
+
+| 모드 | 동작 | 대시보드 표시 |
+|------|------|--------------|
+| `paper` | 가상 주문 실행, DB에 `paper_` 접두사로 기록 | 녹색 "PAPER" 배지 |
+| `live` | 실제 HyperLiquid 주문 실행 | 빨간색 "LIVE" 배지 |
+
+### 7.2 Paper 모드 동작
 
 ```typescript
-// execute-trade.ts 내부
-const config = loadConfig();
-
 if (config.general.mode === "paper") {
-  // 가상 주문 실행
+  // 가상 주문 실행 (수수료 시뮬레이션: 0.05%)
   const paperResult = {
     status: "paper_executed",
     side: signal.action,
@@ -242,29 +284,54 @@ if (config.general.mode === "paper") {
     `INSERT INTO trades (trade_id, ..., status) VALUES (?, ..., 'paper')`,
     [`paper_${Date.now()}`, ...]
   );
-  console.log(JSON.stringify(paperResult));
 } else {
   // 실제 주문 실행
   await walletClient.order({ ... });
 }
 ```
 
+### 7.3 대시보드에서 모드 전환
+
+```
+대시보드 토글 클릭 → POST /api/mode { mode: "live" }
+     │
+     ▼
+SvelteKit API → config.yaml 파일의 general.mode 업데이트
+     │
+     ▼
+다음 파이프라인 실행 시 새 모드 적용
+```
+
 ---
 
-## 8. 모니터링 대시보드
+## 8. 모니터링
 
-### 8.1 OpenClaw 대시보드
+### 8.1 웹 대시보드 (SvelteKit)
+
+```bash
+bun run dashboard
+# http://localhost:5173
+```
+
+- **메인 대시보드**: KPI, 실시간 가격, 잔고, 입금 지갑 주소, 파이프라인 실행
+- **포지션**: 열린 포지션 관리 (청산/수정)
+- **거래 내역**: 전체 거래 이력 + 필터링
+- **시그널**: 분석 결과 상세 (차트 + 지표)
+- **지갑**: 잔고 현황 + 입금 안내
+- **봇 제어**: 개별 스크립트 실행/중지, Kill Switch
+
+상세 스펙은 [08-dashboard.md](./08-dashboard.md) 참조.
+
+### 8.2 OpenClaw 대시보드
 
 ```bash
 openclaw dashboard
 # http://127.0.0.1:18789
 ```
 
-- 실시간 에이전트 상태
-- 세션 히스토리 (트레이딩 루프 결과)
-- cron 작업 목록 및 실행 이력
+- 에이전트 상태, 세션 히스토리, cron 작업 이력
 
-### 8.2 Telegram 알림 예시
+### 8.3 Telegram 알림 예시
 
 ```
 📊 [Trading Loop 결과]
@@ -291,3 +358,4 @@ ETH: HOLD (진입 조건 미충족)
 
 - [01-overview.md](./01-overview.md) — 시스템 아키텍처
 - [06-config-and-deployment.md](./06-config-and-deployment.md) — 설정 전체
+- [08-dashboard.md](./08-dashboard.md) — 웹 대시보드 상세 스펙

@@ -10,7 +10,10 @@
     "wallet": "bun run skills/wallet-manager/scripts/manage-wallet.ts",
     "monitor": "bun run skills/trader/scripts/execute-trade.ts --action monitor",
     "setup-db": "bun run src/db/schema.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dashboard": "cd dashboard && bun run dev",
+    "dashboard:build": "cd dashboard && bun run build",
+    "dashboard:preview": "cd dashboard && bun run preview"
   },
   "dependencies": {
     "@nktkas/hyperliquid": "^0.31.0",

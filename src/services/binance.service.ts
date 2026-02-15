@@ -1,11 +1,13 @@
 import { createLogger } from "../utils/logger";
 import { loadConfig } from "../utils/config";
+import { getBinanceRateLimiter, BINANCE_WEIGHTS } from "../utils/rate-limiter";
 import type { CandleData } from "../models/price-snapshot";
 
 const logger = createLogger("Binance");
 
 // 바이낸스 선물 REST API 직접 호출 (공식 SDK 대신 경량 구현)
 // 가격 조회에는 API 키 불필요 (public endpoints)
+// Rate limit: IP당 2,400 req/min — 안전 마진 70%로 운용
 
 interface BinanceMarkPriceResponse {
   symbol: string;
@@ -57,7 +59,7 @@ export class BinanceService {
   }
 
   /**
-   * HTTP 요청 + AbortController 타임아웃 + exponential backoff 재시도
+   * HTTP 요청 + Rate Limiter + AbortController 타임아웃 + exponential backoff 재시도
    */
   private async request<T>(
     endpoint: string,
@@ -69,6 +71,11 @@ export class BinanceService {
         url.searchParams.set(k, String(v));
       }
     }
+
+    // Rate limiter: 요청 전 토큰 소비 (endpoint별 weight 적용)
+    const rateLimiter = getBinanceRateLimiter();
+    const weight = BINANCE_WEIGHTS[endpoint] || 1;
+    await rateLimiter.acquire(weight);
 
     let lastError: Error | null = null;
 
@@ -95,8 +102,17 @@ export class BinanceService {
               errorDetail = text;
             }
 
-            // 429 (Rate Limit), 5xx는 재시도 가능
-            if (response.status === 429 || response.status >= 500) {
+            // 429 (Rate Limit) → 추가 대기 후 재시도
+            if (response.status === 429) {
+              const retryAfter = response.headers.get("Retry-After");
+              const waitMs = retryAfter ? parseInt(retryAfter) * 1000 : 5000;
+              logger.warn("Binance 429 rate limit hit, backing off", { endpoint, waitMs });
+              await sleep(waitMs);
+              throw new Error(`Binance API 429: ${errorDetail}`);
+            }
+
+            // 5xx는 재시도 가능
+            if (response.status >= 500) {
               throw new Error(`Binance API ${response.status}: ${errorDetail}`);
             }
 
@@ -120,6 +136,8 @@ export class BinanceService {
 
         if (attempt < MAX_RETRIES - 1) {
           const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+          // 재시도 시에도 rate limiter를 통해 토큰 재소비
+          await rateLimiter.acquire(weight);
           logger.warn(`API 요청 재시도 ${attempt + 1}/${MAX_RETRIES}`, {
             endpoint,
             error: lastError.message,

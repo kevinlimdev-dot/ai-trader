@@ -1,36 +1,29 @@
 general:
-  mode: "paper"  # paper / live
-  log_level: "info"
-  timezone: "Asia/Seoul"
-
+  mode: paper
+  log_level: info
+  timezone: Asia/Seoul
 data_agent:
   symbols:
-    - symbol: "BTC"
-      binance_pair: "BTCUSDT"
-      hyperliquid_pair: "BTC"
-    - symbol: "ETH"
-      binance_pair: "ETHUSDT"
-      hyperliquid_pair: "ETH"
-
+    - symbol: BTC
+      binance_pair: BTCUSDT
+      hyperliquid_pair: BTC
+    - symbol: ETH
+      binance_pair: ETHUSDT
+      hyperliquid_pair: ETH
   polling_interval_ms: 1000
-  candle_interval: "1m"
+  candle_interval: 1m
   candle_lookback: 100
-
   binance:
-    base_url: "https://fapi.binance.com"
+    base_url: https://fapi.binance.com
     reconnect_delay_ms: 5000
     max_reconnect_attempts: 10
-
   hyperliquid:
-    base_url: "https://api.hyperliquid.xyz"
+    base_url: https://api.hyperliquid.xyz
     request_timeout_ms: 5000
-
-  anomaly_threshold_pct: 0.10  # 이상치 감지 임계값 (±10%)
-
+  anomaly_threshold_pct: 0.1
   storage:
     max_snapshots_per_symbol: 3600
     cleanup_interval_min: 30
-
 analysis_agent:
   spread:
     threshold_high: 0.05
@@ -47,37 +40,36 @@ analysis_agent:
       signal: 9
     bollinger:
       period: 20
-      std_dev: 2.0
+      std_dev: 2
     ma:
       short: 7
       medium: 25
       long: 99
   weights:
-    spread: 0.30
+    spread: 0.3
     rsi: 0.15
-    macd: 0.20
+    macd: 0.2
     bollinger: 0.15
-    ma: 0.20
+    ma: 0.2
   signal:
     entry_threshold: 0.5
     min_confidence: 0.4
     cooldown_seconds: 30
   risk:
     atr_period: 14
-    stop_loss_multiplier: 2.0
-    take_profit_multiplier: 3.0
+    stop_loss_multiplier: 2
+    take_profit_multiplier: 3
     min_risk_reward_ratio: 1.5
-
 trade_agent:
   hyperliquid:
-    base_url: "https://api.hyperliquid.xyz"
+    base_url: https://api.hyperliquid.xyz
     slippage: 0.01
   leverage:
     default: 5
     max: 10
   risk:
     risk_per_trade: 0.02
-    max_position_pct: 0.10
+    max_position_pct: 0.1
     max_daily_loss: 0.05
     max_concurrent_positions: 3
     max_daily_trades: 50
@@ -88,29 +80,29 @@ trade_agent:
     activation_pct: 1.5
     trail_pct: 0.8
   safety:
-    kill_switch_file: "data/KILL_SWITCH"
+    kill_switch_file: data/KILL_SWITCH
     max_consecutive_api_errors: 5
-    price_anomaly_threshold: 5.0
-  paper_fee_rate: 0.0005  # 페이퍼 모드 수수료 시뮬레이션 (0.05%)
-  signal_max_age_seconds: 60  # 시그널 최대 유효기간
-
+    price_anomaly_threshold: 5
+  paper_fee_rate: 0.0005
+  signal_max_age_seconds: 60
 wallet_agent:
   monitoring:
     balance_check_interval_sec: 30
     low_balance_alert_usdc: 300
   agentic_wallet:
-    network: "base"                # Agentic Wallet 네트워크 (Base)
-    cli_timeout_ms: 30000          # awal CLI 타임아웃
+    network: base
+    cli_timeout_ms: 30000
   transfers:
     max_single_transfer: 1000
     max_daily_transfer: 5000
     auto_fund_enabled: true
-    auto_fund_buffer_pct: 0.20
+    auto_fund_buffer_pct: 0.2
+    auto_withdraw_excess_pct: 0.5
   security:
     min_reserve_coinbase: 500
     min_reserve_hyperliquid: 200
+    max_reserve_hyperliquid: 3000
     whitelist: []
-
 database:
-  path: "data/ai-trader.db"
+  path: data/ai-trader.db
   wal_mode: true

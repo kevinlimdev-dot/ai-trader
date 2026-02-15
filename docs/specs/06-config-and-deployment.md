@@ -236,10 +236,11 @@ DATABASE_PATH=data/ai-trader.db
 ## 7. config.yaml (트레이딩 설정)
 
 트레이딩 파라미터는 `config.yaml`에 정의. OpenClaw 설정(`openclaw.json`)과 분리하여 관리한다.
+대시보드에서 `paper`/`live` 모드를 전환하면 이 파일의 `general.mode`가 자동으로 업데이트된다.
 
 ```yaml
 general:
-  mode: "paper"  # paper / live
+  mode: "paper"                    # paper / live (대시보드에서 전환 가능)
   log_level: "info"
   timezone: "Asia/Seoul"
 
@@ -252,8 +253,30 @@ data_agent:
       binance_pair: "ETHUSDT"
       hyperliquid_pair: "ETH"
   polling_interval_ms: 1000
+  candle_interval: "1m"
+  candle_lookback: 100
+  binance:
+    base_url: "https://fapi.binance.com"
+    reconnect_delay_ms: 5000
+    max_reconnect_attempts: 10
+  hyperliquid:
+    base_url: "https://api.hyperliquid.xyz"
+    request_timeout_ms: 5000
+  anomaly_threshold_pct: 0.10
+  storage:
+    max_snapshots_per_symbol: 3600
+    cleanup_interval_min: 30
 
 analysis_agent:
+  spread:
+    threshold_high: 0.05
+    threshold_extreme: 0.15
+    lookback_count: 60
+  indicators:
+    rsi: { period: 14, overbought: 70, oversold: 30 }
+    macd: { fast: 12, slow: 26, signal: 9 }
+    bollinger: { period: 20, std_dev: 2.0 }
+    ma: { short: 7, medium: 25, long: 99 }
   weights:
     spread: 0.30
     rsi: 0.15
@@ -263,15 +286,36 @@ analysis_agent:
   signal:
     entry_threshold: 0.5
     min_confidence: 0.4
+    cooldown_seconds: 30
+  risk:
+    atr_period: 14
+    stop_loss_multiplier: 2.0
+    take_profit_multiplier: 3.0
+    min_risk_reward_ratio: 1.5
 
 trade_agent:
+  hyperliquid:
+    base_url: "https://api.hyperliquid.xyz"
+    slippage: 0.01
   leverage: { default: 5, max: 10 }
   risk:
     risk_per_trade: 0.02
     max_position_pct: 0.10
     max_daily_loss: 0.05
+    max_concurrent_positions: 3
+    max_daily_trades: 50
+    min_balance_usdc: 100
+    min_signal_confidence: 0.4
+  trailing_stop:
+    enabled: true
+    activation_pct: 1.5
+    trail_pct: 0.8
   safety:
     kill_switch_file: "data/KILL_SWITCH"
+    max_consecutive_api_errors: 5
+    price_anomaly_threshold: 5.0
+  paper_fee_rate: 0.0005             # Paper 모드 수수료율
+  signal_max_age_seconds: 60         # 시그널 유효 기간
 
 wallet_agent:
   monitoring:
@@ -285,9 +329,11 @@ wallet_agent:
     max_daily_transfer: 5000
     auto_fund_enabled: true
     auto_fund_buffer_pct: 0.20
+    auto_withdraw_excess_pct: 0.50   # HL 초과분 회수 비율 (NEW)
   security:
     min_reserve_coinbase: 500
     min_reserve_hyperliquid: 200
+    max_reserve_hyperliquid: 3000    # HL 최대 보유 한도 (NEW)
     whitelist: []
 
 database:
@@ -304,12 +350,18 @@ database:
   "name": "ai-trader",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "collect": "bun run skills/data-collector/scripts/collect-prices.ts",
     "analyze": "bun run skills/analyzer/scripts/analyze.ts",
     "trade": "bun run skills/trader/scripts/execute-trade.ts",
     "wallet": "bun run skills/wallet-manager/scripts/manage-wallet.ts",
-    "setup-db": "bun run src/db/schema.ts"
+    "monitor": "bun run skills/trader/scripts/execute-trade.ts --action monitor",
+    "setup-db": "bun run src/db/schema.ts",
+    "typecheck": "tsc --noEmit",
+    "dashboard": "cd dashboard && bun run dev",
+    "dashboard:build": "cd dashboard && bun run build",
+    "dashboard:preview": "cd dashboard && bun run preview"
   },
   "dependencies": {
     "@nktkas/hyperliquid": "^0.31.0",
@@ -359,6 +411,7 @@ database:
 ```bash
 # 1. 의존성 설치
 bun install
+cd dashboard && bun install && cd ..
 
 # 2. DB 초기화
 bun run setup-db
@@ -368,14 +421,16 @@ bunx awal auth login your@email.com
 bunx awal auth verify <flowId> <code>
 bunx awal status  # 인증 확인
 
-# 4. OpenClaw Gateway 실행 (별도 터미널 또는 데몬)
+# 4. 웹 대시보드 실행 (SvelteKit)
+bun run dashboard
+# → http://localhost:5173 에서 모니터링/제어
+
+# 5. OpenClaw Gateway 실행 (별도 터미널 또는 데몬)
 openclaw gateway
 
-# 5. 크론 작업 등록 (최초 1회)
+# 6. 크론 작업 등록 (최초 1회, 자동 트레이딩 루프용)
 # → 위 섹션 5의 cron add 명령 실행
-
-# 6. 대시보드에서 모니터링
-openclaw dashboard
+# 또는 대시보드의 "Run All" 버튼으로 수동 실행
 ```
 
 ### pm2 (Gateway가 이미 데몬이므로, Gateway 자체는 pm2 불필요)
@@ -415,3 +470,4 @@ bun.lockb
 
 - [01-overview.md](./01-overview.md) — 아키텍처 개요
 - [07-data-flow.md](./07-data-flow.md) — 데이터 흐름 / 오케스트레이션
+- [08-dashboard.md](./08-dashboard.md) — 웹 대시보드 상세 스펙

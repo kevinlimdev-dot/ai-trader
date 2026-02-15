@@ -22,9 +22,11 @@ metadata: {"openclaw":{"requires":{"bins":["bun","npx"]}}}
 
 ## 사용 시나리오
 
-- 사용자가 "잔고 확인해", "코인베이스에서 하이퍼리퀴드로 500 USDC 보내줘" 요청 시
-- trader 스킬에서 잔고 부족으로 자금 요청이 발생했을 때
+- 사용자가 Coinbase Agentic Wallet에 USDC를 입금하면, 봇이 자동으로 HyperLiquid에 배분
+- trader 스킬에서 잔고 부족으로 자금 요청이 발생했을 때 자동 충전
+- 트레이딩 파이프라인에서 거래 전 자동 리밸런싱 (auto-rebalance)
 - cron 작업에서 주기적 잔고 확인 시
+- 사용자가 "잔고 확인해", "코인베이스에서 하이퍼리퀴드로 500 USDC 보내줘" 요청 시
 
 ## 실행 방법
 
@@ -51,6 +53,11 @@ bun run {baseDir}/scripts/manage-wallet.ts --action process-requests
 자동 충전 (하이퍼리퀴드 잔고 부족 시 자동 입금):
 \`\`\`
 bun run {baseDir}/scripts/manage-wallet.ts --action auto-fund
+\`\`\`
+
+자동 리밸런싱 (Coinbase ↔ HyperLiquid 잔고 자동 조절):
+\`\`\`
+bun run {baseDir}/scripts/manage-wallet.ts --action auto-rebalance
 \`\`\`
 
 일일 리포트:
@@ -156,6 +163,71 @@ Agentic Wallet (Base) ──send──→ HyperLiquid (Arbitrum)
 
 ---
 
+## 3.5 단일 입금 지점 (Coinbase Agentic Wallet)
+
+사용자는 **Coinbase Agentic Wallet 주소**에만 USDC를 입금하면 된다. 봇이 자동으로 HyperLiquid 거래 계좌에 필요한 자금을 배분한다.
+
+```
+┌──────────────┐       자동 충전        ┌──────────────────┐
+│   사용자       │ ─── USDC 입금 ──→ │  Coinbase Agentic  │
+│              │                      │  Wallet (Base)     │
+└──────────────┘                      └────────┬───────────┘
+                                               │
+                                      auto-rebalance
+                                               │
+                                               ▼
+                                      ┌──────────────────┐
+                                      │  HyperLiquid     │
+                                      │  거래 계좌        │
+                                      │  (Arbitrum)       │
+                                      └──────────────────┘
+```
+
+### 대시보드에서 입금 주소 표시
+
+- **메인 대시보드**: "내 입금 지갑" 카드에 Coinbase + HyperLiquid 주소 상시 표시 (복사 버튼 포함)
+- **사이드바**: 축약된 지갑 주소 상시 표시 (클릭 시 복사)
+- **지갑 페이지**: 상세 잔고 + 입금 안내
+
+### Coinbase 주소 자동 조회
+
+서버에서 `bunx awal address` 명령으로 Coinbase Agentic Wallet 주소를 자동 조회하며, 5분간 캐시한다. `awal` CLI가 설정되어 있지 않으면 수동 확인 안내를 표시한다.
+
+---
+
+## 3.6 자동 리밸런싱 (auto-rebalance)
+
+트레이딩 파이프라인의 3단계에서 거래 실행 전에 자동으로 호출된다.
+
+### 리밸런싱 로직
+
+```
+1. Coinbase + HyperLiquid 잔고 조회
+2. HyperLiquid 잔고가 min_reserve_hyperliquid 미만?
+   → YES: Coinbase에서 자동 충전
+3. HyperLiquid 잔고가 max_reserve_hyperliquid 초과?
+   → YES: 초과분의 auto_withdraw_excess_pct만큼 Coinbase로 회수
+4. 리밸런싱 결과를 DB에 기록
+```
+
+### 설정
+
+```yaml
+wallet_agent:
+  transfers:
+    auto_withdraw_excess_pct: 0.5   # 초과분의 50% 회수
+  security:
+    min_reserve_hyperliquid: 200    # HL 최소 보유
+    max_reserve_hyperliquid: 3000   # HL 최대 보유 (초과 시 회수)
+```
+
+### 파이프라인 내 동작
+
+- `auto-rebalance`가 실패하더라도 파이프라인은 계속 진행한다 (거래 실행에 영향 없음)
+- 잔고 부족 시 거래 자체가 리스크 체크에서 차단됨
+
+---
+
 ## 4. 보안 가드레일
 
 | 한도 항목 | 기본값 | 설명 |
@@ -186,9 +258,11 @@ wallet_agent:
     max_daily_transfer: 5000
     auto_fund_enabled: true
     auto_fund_buffer_pct: 0.20
+    auto_withdraw_excess_pct: 0.5    # HL 초과분 50% 회수 (NEW)
   security:
     min_reserve_coinbase: 500
     min_reserve_hyperliquid: 200
+    max_reserve_hyperliquid: 3000    # HL 최대 보유 한도 (NEW)
     whitelist: []   # 비어있으면 모든 주소 허용 (개발 모드)
 ```
 
@@ -225,3 +299,4 @@ src/services/
 
 - [04-trade-agent.md](./04-trade-agent.md) — trader 스킬 (자금 요청자)
 - [06-config-and-deployment.md](./06-config-and-deployment.md) — 전체 설정
+- [08-dashboard.md](./08-dashboard.md) — 웹 대시보드 (입금 주소 표시)
