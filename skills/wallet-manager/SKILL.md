@@ -32,6 +32,16 @@ bun run {baseDir}/scripts/manage-wallet.ts --action fund --amount 500
 bun run {baseDir}/scripts/manage-wallet.ts --action withdraw --amount 500
 ```
 
+대기 중인 자금 요청 처리:
+```
+bun run {baseDir}/scripts/manage-wallet.ts --action process-requests
+```
+
+자동 충전 (하이퍼리퀴드 잔고 부족 시):
+```
+bun run {baseDir}/scripts/manage-wallet.ts --action auto-fund
+```
+
 일일 리포트:
 ```
 bun run {baseDir}/scripts/manage-wallet.ts --action daily-report

@@ -8,15 +8,22 @@
  */
 
 import { resolve } from "path";
-import { existsSync, renameSync, mkdirSync } from "fs";
 import { BinanceService } from "../../../src/services/binance.service";
 import { HyperliquidService } from "../../../src/services/hyperliquid.service";
 import { loadConfig, getProjectRoot } from "../../../src/utils/config";
 import { createLogger } from "../../../src/utils/logger";
-import { insertSnapshot } from "../../../src/db/repository";
+import { atomicWrite } from "../../../src/utils/file";
+import { insertSnapshot, getLatestSnapshotPrice, cleanupOldSnapshots, closeDb } from "../../../src/db/repository";
 import type { PriceSnapshot, SnapshotCollection } from "../../../src/models/price-snapshot";
 
 const logger = createLogger("DataCollector");
+
+// ─── Graceful Shutdown ───
+function setupGracefulShutdown(): void {
+  const cleanup = () => { closeDb(); process.exit(0); };
+  process.on("SIGINT", cleanup);
+  process.on("SIGTERM", cleanup);
+}
 
 // CLI 인자 파싱
 function parseArgs(): { symbol?: string } {
@@ -27,14 +34,37 @@ function parseArgs(): { symbol?: string } {
   };
 }
 
-// Atomic write
-async function atomicWrite(filepath: string, data: unknown): Promise<void> {
-  const dir = resolve(filepath, "..");
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+// ─── 이상치 감지 ───
 
-  const tmpPath = `${filepath}.tmp.${Date.now()}`;
-  await Bun.write(tmpPath, JSON.stringify(data, null, 2));
-  renameSync(tmpPath, filepath);
+function detectAnomaly(
+  symbol: string,
+  newBinancePrice: number,
+  newHlPrice: number,
+): { anomaly: boolean; details?: string } {
+  const prevPrice = getLatestSnapshotPrice(symbol);
+  if (!prevPrice) {
+    return { anomaly: false }; // 첫 수집에서는 비교 대상 없음
+  }
+
+  const config = loadConfig();
+  const ANOMALY_THRESHOLD = config.data_agent.anomaly_threshold_pct || 0.10;
+
+  const binanceChange = Math.abs((newBinancePrice - prevPrice.binance) / prevPrice.binance);
+  const hlChange = Math.abs((newHlPrice - prevPrice.hl) / prevPrice.hl);
+
+  if (binanceChange >= ANOMALY_THRESHOLD) {
+    const detail = `바이낸스 가격 급변: ${prevPrice.binance} → ${newBinancePrice} (${(binanceChange * 100).toFixed(2)}%)`;
+    logger.warn("이상치 감지", { symbol, detail });
+    return { anomaly: true, details: detail };
+  }
+
+  if (hlChange >= ANOMALY_THRESHOLD) {
+    const detail = `하이퍼리퀴드 가격 급변: ${prevPrice.hl} → ${newHlPrice} (${(hlChange * 100).toFixed(2)}%)`;
+    logger.warn("이상치 감지", { symbol, detail });
+    return { anomaly: true, details: detail };
+  }
+
+  return { anomaly: false };
 }
 
 async function collectForSymbol(
@@ -58,8 +88,8 @@ async function collectForSymbol(
   const spreadPct = hlMidPrice > 0 ? Math.abs(spreadAbsolute) / hlMidPrice : 0;
   const direction = spreadAbsolute >= 0 ? "binance_higher" : "binance_lower";
 
-  // 이상치 감지 (이전 가격 대비 10% 이상 변동)
-  const anomaly = false; // 첫 수집에서는 비교 대상 없음
+  // 이상치 감지 (이전 가격 대비 ±10% 이상 변동)
+  const anomalyResult = detectAnomaly(symbol, binanceMid, hlMidPrice);
 
   const snapshot: PriceSnapshot = {
     timestamp: new Date().toISOString(),
@@ -82,13 +112,15 @@ async function collectForSymbol(
       direction: direction as "binance_higher" | "binance_lower",
     },
     candles_1m: binanceData.candles,
-    anomaly,
+    anomaly: anomalyResult.anomaly,
   };
 
   return snapshot;
 }
 
 async function main(): Promise<void> {
+  setupGracefulShutdown();
+
   const config = loadConfig();
   const args = parseArgs();
   const root = getProjectRoot();
@@ -108,6 +140,7 @@ async function main(): Promise<void> {
 
   const snapshots: PriceSnapshot[] = [];
   const errors: string[] = [];
+  const anomalies: string[] = [];
 
   for (const sym of symbols) {
     let retries = 3;
@@ -116,6 +149,11 @@ async function main(): Promise<void> {
         const snapshot = await collectForSymbol(binance, hl, sym);
         snapshots.push(snapshot);
 
+        // 이상치 플래그 기록
+        if (snapshot.anomaly) {
+          anomalies.push(`${sym.symbol}: 가격 급변 감지`);
+        }
+
         // DB에 저장
         insertSnapshot(snapshot);
 
@@ -123,6 +161,7 @@ async function main(): Promise<void> {
           binance: snapshot.binance.mark_price,
           hl: snapshot.hyperliquid.mid_price,
           spread_pct: (snapshot.spread.percentage * 100).toFixed(4) + "%",
+          anomaly: snapshot.anomaly,
         });
         break;
       } catch (err) {
@@ -139,6 +178,12 @@ async function main(): Promise<void> {
     }
   }
 
+  // 양쪽 모두 데이터 없음 → no_data
+  if (snapshots.length === 0 && errors.length === 0) {
+    console.log(JSON.stringify({ status: "no_data", message: "수집할 데이터가 없습니다." }));
+    return;
+  }
+
   // 파일로 저장
   if (snapshots.length > 0) {
     const collection: SnapshotCollection = {
@@ -150,17 +195,31 @@ async function main(): Promise<void> {
     await atomicWrite(snapshotPath, collection);
   }
 
+  // 오래된 스냅샷 정리
+  const maxPerSymbol = config.data_agent.storage.max_snapshots_per_symbol;
+  cleanupOldSnapshots(maxPerSymbol);
+
   // 결과 출력 (OpenClaw 에이전트가 stdout으로 읽음)
+  const status = errors.length === 0
+    ? "success"
+    : snapshots.length > 0
+      ? "partial"
+      : errors.length > 0 && snapshots.length === 0
+        ? "error"
+        : "no_data";
+
   const result = {
-    status: errors.length === 0 ? "success" : snapshots.length > 0 ? "partial" : "error",
+    status,
     collected: snapshots.length,
     errors: errors.length > 0 ? errors : undefined,
+    anomalies: anomalies.length > 0 ? anomalies : undefined,
     snapshots: snapshots.map((s) => ({
       symbol: s.symbol,
       binance_price: s.binance.mark_price,
       hl_price: s.hyperliquid.mid_price,
       spread_pct: (s.spread.percentage * 100).toFixed(4) + "%",
       direction: s.spread.direction,
+      anomaly: s.anomaly,
     })),
   };
 

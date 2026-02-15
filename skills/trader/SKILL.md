@@ -22,6 +22,11 @@ metadata: {"openclaw":{"requires":{"bins":["bun"]},"primaryEnv":"HYPERLIQUID_PRI
 bun run {baseDir}/scripts/execute-trade.ts
 ```
 
+포지션 모니터링 (SL/TP/트레일링 스탑 체크):
+```
+bun run {baseDir}/scripts/execute-trade.ts --action monitor
+```
+
 포지션 조회:
 ```
 bun run {baseDir}/scripts/execute-trade.ts --action positions

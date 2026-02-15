@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from "fs";
 import { parse } from "yaml";
 import { resolve } from "path";
+import { setGlobalLogLevel } from "./logger";
 
 export interface SymbolConfig {
   symbol: string;
@@ -28,6 +29,7 @@ export interface AppConfig {
       base_url: string;
       request_timeout_ms: number;
     };
+    anomaly_threshold_pct: number;
     storage: {
       max_snapshots_per_symbol: number;
       cleanup_interval_min: number;
@@ -89,6 +91,8 @@ export interface AppConfig {
       max_consecutive_api_errors: number;
       price_anomaly_threshold: number;
     };
+    paper_fee_rate: number;
+    signal_max_age_seconds: number;
   };
   wallet_agent: {
     monitoring: {
@@ -142,6 +146,12 @@ export function loadConfig(configPath?: string): AppConfig {
   const raw = readFileSync(filePath, "utf-8");
   const config = parse(raw) as AppConfig;
   cachedConfig = config;
+
+  // 로거 레벨 초기화
+  if (config.general?.log_level) {
+    setGlobalLogLevel(config.general.log_level);
+  }
+
   return config;
 }
 

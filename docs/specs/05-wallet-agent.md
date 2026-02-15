@@ -48,6 +48,11 @@ bun run {baseDir}/scripts/manage-wallet.ts --action withdraw --amount 500
 bun run {baseDir}/scripts/manage-wallet.ts --action process-requests
 ```
 
+자동 충전 (하이퍼리퀴드 잔고 부족 시 자동 입금):
+```
+bun run {baseDir}/scripts/manage-wallet.ts --action auto-fund
+```
+
 일일 리포트:
 ```
 bun run {baseDir}/scripts/manage-wallet.ts --action daily-report

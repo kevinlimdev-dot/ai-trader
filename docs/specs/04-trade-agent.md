@@ -33,6 +33,11 @@ metadata: {"openclaw":{"requires":{"bins":["bun"]},"primaryEnv":"HYPERLIQUID_PRI
 bun run {baseDir}/scripts/execute-trade.ts
 ```
 
+포지션 모니터링 (SL/TP/트레일링 스탑 체크):
+```
+bun run {baseDir}/scripts/execute-trade.ts --action monitor
+```
+
 포지션 조회:
 ```
 bun run {baseDir}/scripts/execute-trade.ts --action positions
@@ -59,7 +64,8 @@ bun run {baseDir}/scripts/execute-trade.ts --action daily-summary
 
 ## 출력
 
-- SQLite `trades` 테이블에 거래 기록
+- SQLite `trades` 테이블에 거래 기록 (SL/TP/peak_pnl_pct/trailing_activated 포함)
+- `data/fund-requests/latest.json` — 잔고 부족 시 자금 요청 자동 생성
 - stdout에 실행 결과 JSON
 
 ## 안전장치

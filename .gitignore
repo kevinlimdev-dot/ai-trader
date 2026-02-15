@@ -3,10 +3,13 @@ dist/
 data/*.db
 data/*.db-journal
 data/*.db-wal
-data/snapshots/
-data/signals/
+data/snapshots/*
+!data/snapshots/.gitkeep
+data/signals/*
+!data/signals/.gitkeep
+data/fund-requests/*
+!data/fund-requests/.gitkeep
 data/KILL_SWITCH
-data/fund-requests/
 .env
 .env.*
 !.env.example

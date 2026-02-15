@@ -7,11 +7,12 @@
  */
 
 import { resolve } from "path";
-import { existsSync, readFileSync, renameSync, mkdirSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { RSI, MACD, BollingerBands, SMA, ATR } from "technicalindicators";
 import { loadConfig, getProjectRoot } from "../../../src/utils/config";
 import { createLogger } from "../../../src/utils/logger";
-import { getClosePrices } from "../../../src/db/repository";
+import { atomicWrite } from "../../../src/utils/file";
+import { getClosePrices, getLastSignalTime, closeDb } from "../../../src/db/repository";
 import type { SnapshotCollection, PriceSnapshot } from "../../../src/models/price-snapshot";
 import type {
   TradeSignal,
@@ -22,14 +23,11 @@ import type {
 
 const logger = createLogger("Analyzer");
 
-// ─── Atomic Write ───
-
-async function atomicWrite(filepath: string, data: unknown): Promise<void> {
-  const dir = resolve(filepath, "..");
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const tmpPath = `${filepath}.tmp.${Date.now()}`;
-  await Bun.write(tmpPath, JSON.stringify(data, null, 2));
-  renameSync(tmpPath, filepath);
+// ─── Graceful Shutdown ───
+function setupGracefulShutdown(): void {
+  const cleanup = () => { closeDb(); process.exit(0); };
+  process.on("SIGINT", cleanup);
+  process.on("SIGTERM", cleanup);
 }
 
 // ─── Score Map ───
@@ -43,6 +41,21 @@ const SCORE_MAP: Record<string, number> = {
   SHORT: -1,
   STRONG_SHORT: -2,
 };
+
+// ─── Cooldown Check ───
+
+function isInCooldown(symbol: string, cooldownSeconds: number): boolean {
+  const lastTime = getLastSignalTime(symbol);
+  if (!lastTime) return false;
+
+  const elapsed = (Date.now() - new Date(lastTime).getTime()) / 1000;
+  if (elapsed < cooldownSeconds) {
+    logger.info(`${symbol} 쿨다운 중 (${elapsed.toFixed(0)}s / ${cooldownSeconds}s)`);
+    return true;
+  }
+
+  return false;
+}
 
 // ─── Indicator Analysis ───
 
@@ -128,7 +141,7 @@ function analyzeBollinger(closes: number[]): {
   upper: number;
   middle: number;
   lower: number;
-  position: string;
+  position: "above" | "upper" | "middle" | "lower" | "below";
   signal: IndicatorSignal;
 } {
   const config = loadConfig();
@@ -150,7 +163,7 @@ function analyzeBollinger(closes: number[]): {
   }
 
   const currentPrice = closes[closes.length - 1];
-  let position: string;
+  let position: "above" | "upper" | "middle" | "lower" | "below";
   let signal: IndicatorSignal;
 
   if (currentPrice <= latest.lower) {
@@ -320,7 +333,7 @@ function analyzeSymbol(snapshot: PriceSnapshot, historicalCloses: number[]): Tra
       upper: bollinger.upper,
       middle: bollinger.middle,
       lower: bollinger.lower,
-      position: bollinger.position as any,
+      position: bollinger.position,
       signal: bollinger.signal,
     },
     ma: { ma_7: ma.ma7, ma_25: ma.ma25, ma_99: ma.ma99, signal: ma.signal },
@@ -345,6 +358,9 @@ function analyzeSymbol(snapshot: PriceSnapshot, historicalCloses: number[]): Tra
 }
 
 async function main(): Promise<void> {
+  setupGracefulShutdown();
+
+  const config = loadConfig();
   const root = getProjectRoot();
   const snapshotPath = resolve(root, "data/snapshots/latest.json");
 
@@ -367,8 +383,35 @@ async function main(): Promise<void> {
   }
 
   const signals: TradeSignal[] = [];
+  const cooldownSeconds = config.analysis_agent.signal.cooldown_seconds;
+  const skippedCooldown: string[] = [];
 
   for (const snapshot of collection.snapshots) {
+    // 쿨다운 체크
+    if (isInCooldown(snapshot.symbol, cooldownSeconds)) {
+      skippedCooldown.push(snapshot.symbol);
+      // 쿨다운 중에는 HOLD 시그널 생성
+      signals.push({
+        timestamp: new Date().toISOString(),
+        symbol: snapshot.symbol,
+        action: "HOLD",
+        confidence: 0,
+        entry_price: snapshot.hyperliquid.mid_price,
+        stop_loss: snapshot.hyperliquid.mid_price,
+        take_profit: snapshot.hyperliquid.mid_price,
+        analysis: {
+          spread: { value_pct: snapshot.spread.percentage, direction: snapshot.spread.direction, signal: "NEUTRAL" },
+          rsi: { value: 50, signal: "NEUTRAL" },
+          macd: { histogram: 0, macd_line: 0, signal_line: 0, signal: "NEUTRAL" },
+          bollinger: { upper: 0, middle: 0, lower: 0, position: "middle", signal: "NEUTRAL" },
+          ma: { ma_7: 0, ma_25: 0, ma_99: 0, signal: "NEUTRAL" },
+          composite_score: 0,
+        },
+        risk: { risk_reward_ratio: 0, max_position_pct: 0, atr: 0 },
+      });
+      continue;
+    }
+
     // DB에서 이력 데이터 가져오기 (캔들이 없는 경우)
     const historicalCloses = getClosePrices(snapshot.symbol, 100);
 
@@ -396,6 +439,7 @@ async function main(): Promise<void> {
   const result = {
     status: "success",
     analyzed: signals.length,
+    cooldown_skipped: skippedCooldown.length > 0 ? skippedCooldown : undefined,
     signals: signals.map((s) => ({
       symbol: s.symbol,
       action: s.action,

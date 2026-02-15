@@ -22,6 +22,21 @@ export function closeDb(): void {
   }
 }
 
+// ─── 트랜잭션 헬퍼 ───
+
+export function runTransaction<T>(fn: (db: Database) => T): T {
+  const db = getDb();
+  db.run("BEGIN");
+  try {
+    const result = fn(db);
+    db.run("COMMIT");
+    return result;
+  } catch (err) {
+    db.run("ROLLBACK");
+    throw err;
+  }
+}
+
 // ─── Snapshots ───
 
 export function insertSnapshot(snapshot: PriceSnapshot): void {
@@ -104,8 +119,9 @@ export function insertTrade(trade: TradeRecord): void {
     `INSERT INTO trades (
       trade_id, timestamp_open, timestamp_close, symbol, side,
       entry_price, exit_price, size, leverage,
+      stop_loss, take_profit, peak_pnl_pct, trailing_activated,
       pnl, pnl_pct, fees, exit_reason, signal_confidence, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       trade.trade_id,
       trade.timestamp_open,
@@ -116,6 +132,10 @@ export function insertTrade(trade: TradeRecord): void {
       trade.exit_price || null,
       trade.size,
       trade.leverage,
+      trade.stop_loss || null,
+      trade.take_profit || null,
+      trade.peak_pnl_pct || 0,
+      trade.trailing_activated || 0,
       trade.pnl || null,
       trade.pnl_pct || null,
       trade.fees || null,
@@ -135,7 +155,7 @@ export function updateTrade(
   const values: any[] = [];
 
   for (const [key, value] of Object.entries(updates)) {
-    if (key === "trade_id" || key === "id") continue;
+    if (key === "trade_id" || key === "id" || key === "created_at") continue;
     sets.push(`${key} = ?`);
     values.push(value);
   }
@@ -147,7 +167,7 @@ export function updateTrade(
 
 export function getOpenTrades(): TradeRecord[] {
   const db = getDb();
-  return db.query(`SELECT * FROM trades WHERE status = 'open'`).all() as TradeRecord[];
+  return db.query(`SELECT * FROM trades WHERE status IN ('open', 'paper')`).all() as TradeRecord[];
 }
 
 export function getTradesByDate(date: string): TradeRecord[] {
@@ -194,6 +214,9 @@ export function getDailySummary(date?: string): DailySummary | null {
   const totalFees = trades.reduce((s, t) => s + (t.fees || 0), 0);
   const pnls = trades.map((t) => t.pnl || 0);
 
+  // 잔고 정보 가져오기
+  const balanceStart = getLatestBalance();
+
   return {
     date: targetDate,
     total_trades: trades.length,
@@ -201,13 +224,15 @@ export function getDailySummary(date?: string): DailySummary | null {
     losing_trades: losers.length,
     win_rate: trades.length > 0 ? winners.length / trades.length : 0,
     total_pnl: totalPnl,
-    total_pnl_pct: 0, // 잔고 기준으로 외부에서 계산
+    total_pnl_pct: balanceStart?.total_balance
+      ? (totalPnl / balanceStart.total_balance) * 100
+      : 0,
     max_win: Math.max(...pnls, 0),
     max_loss: Math.min(...pnls, 0),
     avg_pnl: trades.length > 0 ? totalPnl / trades.length : 0,
     total_fees: totalFees,
-    balance_start: 0,
-    balance_end: 0,
+    balance_start: balanceStart?.total_balance || 0,
+    balance_end: (balanceStart?.total_balance || 0) + totalPnl,
   };
 }
 
@@ -262,6 +287,77 @@ export function getLatestBalance(): BalanceSnapshot | null {
   return db
     .query(`SELECT * FROM balance_snapshots ORDER BY timestamp DESC LIMIT 1`)
     .get() as BalanceSnapshot | null;
+}
+
+// ─── Latest Snapshot Price (for anomaly detection) ───
+
+export function getLatestSnapshotPrice(symbol: string): { binance: number; hl: number } | null {
+  const db = getDb();
+  const row = db
+    .query(
+      `SELECT binance_mark_price, hl_mid_price FROM snapshots
+       WHERE symbol = ? ORDER BY timestamp DESC LIMIT 1`,
+    )
+    .get(symbol) as { binance_mark_price: number; hl_mid_price: number } | null;
+
+  if (!row) return null;
+  return { binance: row.binance_mark_price, hl: row.hl_mid_price };
+}
+
+// ─── Last Signal Time (for cooldown) ───
+
+export function getLastSignalTime(symbol: string): string | null {
+  const db = getDb();
+  const row = db
+    .query(
+      `SELECT timestamp_open FROM trades
+       WHERE symbol = ? ORDER BY timestamp_open DESC LIMIT 1`,
+    )
+    .get(symbol) as { timestamp_open: string } | null;
+
+  return row?.timestamp_open || null;
+}
+
+// ─── Trade by Symbol (for position monitoring) ───
+
+export function getOpenTradeBySymbol(symbol: string): TradeRecord | null {
+  const db = getDb();
+  return db
+    .query(`SELECT * FROM trades WHERE symbol = ? AND status IN ('open', 'paper') ORDER BY timestamp_open DESC LIMIT 1`)
+    .get(symbol) as TradeRecord | null;
+}
+
+// ─── API Error Counter (파일 기반 — 프로세스 재시작에도 유지) ───
+
+const API_ERROR_FILE = "api_error_count";
+
+export function getApiErrorCount(): number {
+  const db = getDb();
+  const row = db
+    .query(`SELECT value FROM api_state WHERE key = ?`)
+    .get(API_ERROR_FILE) as { value: string } | null;
+  return row ? parseInt(row.value, 10) : 0;
+}
+
+export function incrementApiErrorCount(): number {
+  const current = getApiErrorCount();
+  const next = current + 1;
+  const db = getDb();
+  db.run(
+    `INSERT INTO api_state (key, value, updated_at) VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+    [API_ERROR_FILE, String(next), String(next)],
+  );
+  return next;
+}
+
+export function resetApiErrorCount(): void {
+  const db = getDb();
+  db.run(
+    `INSERT INTO api_state (key, value, updated_at) VALUES (?, '0', datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = '0', updated_at = datetime('now')`,
+    [API_ERROR_FILE],
+  );
 }
 
 // ─── Cleanup ───

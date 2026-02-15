@@ -25,6 +25,8 @@ data_agent:
     base_url: "https://api.hyperliquid.xyz"
     request_timeout_ms: 5000
 
+  anomaly_threshold_pct: 0.10  # 이상치 감지 임계값 (±10%)
+
   storage:
     max_snapshots_per_symbol: 3600
     cleanup_interval_min: 30
@@ -89,6 +91,8 @@ trade_agent:
     kill_switch_file: "data/KILL_SWITCH"
     max_consecutive_api_errors: 5
     price_anomaly_threshold: 5.0
+  paper_fee_rate: 0.0005  # 페이퍼 모드 수수료 시뮬레이션 (0.05%)
+  signal_max_age_seconds: 60  # 시그널 최대 유효기간
 
 wallet_agent:
   monitoring:

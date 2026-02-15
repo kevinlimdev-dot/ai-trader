@@ -20,6 +20,10 @@ export interface TradeRecord {
   exit_price?: number;
   size: number;
   leverage: number;
+  stop_loss?: number;
+  take_profit?: number;
+  peak_pnl_pct?: number;
+  trailing_activated?: number;
   pnl?: number;
   pnl_pct?: number;
   fees?: number;
@@ -64,4 +68,17 @@ export interface DailySummary {
   total_fees: number;
   balance_start: number;
   balance_end: number;
+}
+
+/**
+ * 자금 요청 (trader → wallet-manager 간 데이터 플로우)
+ */
+export interface FundRequest {
+  request_id: string;
+  timestamp: string;
+  type: "fund" | "withdraw";
+  amount: number;
+  reason: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  status: "pending" | "processing" | "completed" | "rejected";
 }

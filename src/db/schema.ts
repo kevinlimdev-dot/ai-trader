@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS trades (
   exit_price REAL,
   size REAL NOT NULL,
   leverage INTEGER NOT NULL,
+  stop_loss REAL,
+  take_profit REAL,
+  peak_pnl_pct REAL DEFAULT 0,
+  trailing_activated INTEGER DEFAULT 0,
   pnl REAL,
   pnl_pct REAL,
   fees REAL,
@@ -51,6 +55,7 @@ CREATE TABLE IF NOT EXISTS trades (
 CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
 CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
 CREATE INDEX IF NOT EXISTS idx_trades_open_ts ON trades(timestamp_open);
+CREATE INDEX IF NOT EXISTS idx_trades_symbol_status ON trades(symbol, status);
 
 CREATE TABLE IF NOT EXISTS wallet_transfers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,6 +69,9 @@ CREATE TABLE IF NOT EXISTS wallet_transfers (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE INDEX IF NOT EXISTS idx_transfers_timestamp ON wallet_transfers(timestamp);
+CREATE INDEX IF NOT EXISTS idx_transfers_status ON wallet_transfers(status);
+
 CREATE TABLE IF NOT EXISTS balance_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   timestamp TEXT NOT NULL,
@@ -74,7 +82,32 @@ CREATE TABLE IF NOT EXISTS balance_snapshots (
 );
 
 CREATE INDEX IF NOT EXISTS idx_balance_ts ON balance_snapshots(timestamp);
+
+CREATE TABLE IF NOT EXISTS api_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
 `;
+
+// ─── 마이그레이션: 기존 DB에 새 컬럼 추가 ───
+
+const MIGRATIONS = [
+  "ALTER TABLE trades ADD COLUMN stop_loss REAL",
+  "ALTER TABLE trades ADD COLUMN take_profit REAL",
+  "ALTER TABLE trades ADD COLUMN peak_pnl_pct REAL DEFAULT 0",
+  "ALTER TABLE trades ADD COLUMN trailing_activated INTEGER DEFAULT 0",
+];
+
+function runMigrations(db: Database): void {
+  for (const sql of MIGRATIONS) {
+    try {
+      db.run(sql);
+    } catch {
+      // 이미 컬럼이 있으면 무시 (duplicate column name)
+    }
+  }
+}
 
 export function initDatabase(dbPath?: string): Database {
   const path = dbPath || getDbPath();
@@ -92,6 +125,7 @@ export function initDatabase(dbPath?: string): Database {
     db.run("PRAGMA journal_mode=WAL");
   }
   db.run("PRAGMA foreign_keys=ON");
+  db.run("PRAGMA busy_timeout=5000"); // 동시 접근 시 5초 대기
 
   // 스키마 실행
   db.run("BEGIN");
@@ -104,6 +138,9 @@ export function initDatabase(dbPath?: string): Database {
     db.run("ROLLBACK");
     throw err;
   }
+
+  // 마이그레이션
+  runMigrations(db);
 
   logger.info("데이터베이스 초기화 완료", { path });
   return db;

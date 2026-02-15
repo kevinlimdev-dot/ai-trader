@@ -74,42 +74,45 @@ bun run {baseDir}/scripts/collect-prices.ts --symbol BTC
 
 ### 3.1 바이낸스 선물
 
-**SDK**: `@binance/derivatives-trading-usds-futures`
+**구현**: REST API 직접 호출 (경량 구현 — 가격 조회에 API 키 불필요)
 
 ```typescript
-import { USDSFutures } from "@binance/derivatives-trading-usds-futures";
+// src/services/binance.service.ts
+// exponential backoff 재시도 (3회) + AbortController 타임아웃 내장
 
-const client = new USDSFutures({
-  api_key: process.env.BINANCE_API_KEY,
-  api_secret: process.env.BINANCE_API_SECRET,
-});
+const binance = new BinanceService();
 
-// Mark Price
-const markPrice = await client.getMarkPrice({ symbol: "BTCUSDT" });
+// Mark Price + Funding Rate
+const priceData = await binance.getMarkPrice("BTCUSDT");
+// { markPrice: 65432.1, fundingRate: 0.0001 }
 
-// 오더북
-const depth = await client.getDepth({ symbol: "BTCUSDT", limit: 5 });
+// 오더북 (best bid/ask)
+const depth = await binance.getDepth("BTCUSDT", 5);
 
 // 1분봉 캔들
-const klines = await client.getKlines({ symbol: "BTCUSDT", interval: "1m", limit: 100 });
+const candles = await binance.getKlines("BTCUSDT", "1m", 100);
+
+// 전체 데이터 (병렬 호출)
+const fullData = await binance.getFullData("BTCUSDT");
 ```
 
 ### 3.2 하이퍼리퀴드
 
-**SDK**: `@nktkas/hyperliquid`
+**SDK**: `@nktkas/hyperliquid` (`InfoClient` / `ExchangeClient`)
 
 ```typescript
-import { HttpTransport, PublicClient } from "@nktkas/hyperliquid";
+// src/services/hyperliquid.service.ts
+import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 
-const transport = new HttpTransport({ url: "https://api.hyperliquid.xyz" });
-const client = new PublicClient({ transport });
+const transport = new HttpTransport({ apiUrl: "https://api.hyperliquid.xyz" });
+const infoClient = new InfoClient({ transport });
 
 // 현재 가격 (전체)
-const allMids = await client.allMids();
+const allMids = await infoClient.allMids();
 // { "BTC": "65432.1", "ETH": "3456.7", ... }
 
 // 오더북
-const l2 = await client.l2Book({ coin: "BTC" });
+const l2 = await infoClient.l2Book({ coin: "BTC" });
 ```
 
 ---

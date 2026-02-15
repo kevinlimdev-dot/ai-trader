@@ -22,9 +22,8 @@ interface BinanceDepthResponse {
   asks: [string, string][];
 }
 
-interface BinanceKlineResponse {
+interface BinanceKlineItem extends Array<string | number> {
   // [openTime, open, high, low, close, volume, closeTime, ...]
-  [index: number]: string | number;
 }
 
 interface Binance24hrResponse {
@@ -33,15 +32,37 @@ interface Binance24hrResponse {
   quoteVolume: string;
 }
 
+interface BinanceApiError {
+  code: number;
+  msg: string;
+}
+
+// ─── 재시도 설정 ───
+
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export class BinanceService {
   private baseUrl: string;
+  private timeoutMs: number;
 
   constructor() {
     const config = loadConfig();
     this.baseUrl = config.data_agent.binance.base_url;
+    this.timeoutMs = config.data_agent.hyperliquid.request_timeout_ms || 5000;
   }
 
-  private async request<T>(endpoint: string, params?: Record<string, string | number>): Promise<T> {
+  /**
+   * HTTP 요청 + AbortController 타임아웃 + exponential backoff 재시도
+   */
+  private async request<T>(
+    endpoint: string,
+    params?: Record<string, string | number>,
+  ): Promise<T> {
     const url = new URL(`${this.baseUrl}${endpoint}`);
     if (params) {
       for (const [k, v] of Object.entries(params)) {
@@ -49,16 +70,67 @@ export class BinanceService {
       }
     }
 
-    const response = await fetch(url.toString(), {
-      headers: { "Content-Type": "application/json" },
-    });
+    let lastError: Error | null = null;
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Binance API error ${response.status}: ${text}`);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+        try {
+          const response = await fetch(url.toString(), {
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            const text = await response.text();
+
+            // 바이낸스 구조화된 에러 파싱
+            let errorDetail: string;
+            try {
+              const apiErr: BinanceApiError = JSON.parse(text);
+              errorDetail = `code=${apiErr.code}, msg="${apiErr.msg}"`;
+            } catch {
+              errorDetail = text;
+            }
+
+            // 429 (Rate Limit), 5xx는 재시도 가능
+            if (response.status === 429 || response.status >= 500) {
+              throw new Error(`Binance API ${response.status}: ${errorDetail}`);
+            }
+
+            // 4xx (클라이언트 에러)는 재시도 불가
+            throw new RetryableError(
+              `Binance API ${response.status}: ${errorDetail}`,
+              false,
+            );
+          }
+
+          return response.json() as Promise<T>;
+        } finally {
+          clearTimeout(timeout);
+        }
+      } catch (err) {
+        if (err instanceof RetryableError && !err.retryable) {
+          throw err; // 재시도 불가 에러는 즉시 throw
+        }
+
+        lastError = err instanceof Error ? err : new Error(String(err));
+
+        if (attempt < MAX_RETRIES - 1) {
+          const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+          logger.warn(`API 요청 재시도 ${attempt + 1}/${MAX_RETRIES}`, {
+            endpoint,
+            error: lastError.message,
+            next_retry_ms: delay,
+          });
+          await sleep(delay);
+        }
+      }
     }
 
-    return response.json() as Promise<T>;
+    throw lastError || new Error("알 수 없는 에러");
   }
 
   async getMarkPrice(symbol: string): Promise<{ markPrice: number; fundingRate: number }> {
@@ -92,17 +164,17 @@ export class BinanceService {
   }
 
   async getKlines(symbol: string, interval: string = "1m", limit: number = 100): Promise<CandleData[]> {
-    const data = await this.request<any[][]>(
+    const data = await this.request<BinanceKlineItem[]>(
       "/fapi/v1/klines",
       { symbol, interval, limit },
     );
 
     return data.map((k) => ({
-      open: parseFloat(k[1] as string),
-      high: parseFloat(k[2] as string),
-      low: parseFloat(k[3] as string),
-      close: parseFloat(k[4] as string),
-      volume: parseFloat(k[5] as string),
+      open: parseFloat(String(k[1])),
+      high: parseFloat(String(k[2])),
+      low: parseFloat(String(k[3])),
+      close: parseFloat(String(k[4])),
+      volume: parseFloat(String(k[5])),
     }));
   }
 
@@ -130,5 +202,16 @@ export class BinanceService {
       volume24h: volume,
       candles,
     };
+  }
+}
+
+// ─── 재시도 가능 여부를 구분하는 에러 ───
+
+class RetryableError extends Error {
+  retryable: boolean;
+  constructor(message: string, retryable: boolean) {
+    super(message);
+    this.name = "RetryableError";
+    this.retryable = retryable;
   }
 }
