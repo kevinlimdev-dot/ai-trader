@@ -1,17 +1,17 @@
 /**
  * wallet-manager 스킬 스크립트
- * 코인베이스 Agentic Wallet과 하이퍼리퀴드 잔고를 관리하고 자금 이동을 처리한다.
+ * 코인베이스 Agentic Wallet(awal CLI)과 하이퍼리퀴드 잔고를 관리하고 자금 이동을 처리한다.
  *
  * 사용법:
  *   bun run skills/wallet-manager/scripts/manage-wallet.ts --action balance
  *   bun run skills/wallet-manager/scripts/manage-wallet.ts --action fund --amount 500
  *   bun run skills/wallet-manager/scripts/manage-wallet.ts --action withdraw --amount 500
  *   bun run skills/wallet-manager/scripts/manage-wallet.ts --action process-requests
+ *   bun run skills/wallet-manager/scripts/manage-wallet.ts --action auto-fund
  *   bun run skills/wallet-manager/scripts/manage-wallet.ts --action daily-report
  */
 
 import { resolve } from "path";
-import { existsSync, unlinkSync } from "fs";
 import { HyperliquidService } from "../../../src/services/hyperliquid.service";
 import { CoinbaseService } from "../../../src/services/coinbase.service";
 import { loadConfig, isPaperMode, getProjectRoot } from "../../../src/utils/config";
@@ -72,7 +72,6 @@ function validateMinReserve(
   const minHl = config.wallet_agent.security.min_reserve_hyperliquid;
 
   if (direction === "coinbase_to_hl") {
-    // 코인베이스에서 빠져나갈 때 최소 보유량 체크
     const remaining = coinbaseBalance - amount;
     if (remaining < minCoinbase) {
       return {
@@ -81,7 +80,6 @@ function validateMinReserve(
       };
     }
   } else if (direction === "hl_to_coinbase") {
-    // 하이퍼리퀴드에서 빠져나갈 때 최소 보유량 체크
     const remaining = hlBalance - amount;
     if (remaining < minHl) {
       return {
@@ -113,7 +111,6 @@ function validateTransfer(
     return { ok: false, reason: `일일 전송 한도 초과: ${todayTotal + amount} > ${limits.max_daily_transfer} USDC` };
   }
 
-  // 최소 보유 잔고 검증
   const reserveCheck = validateMinReserve(direction, amount, coinbaseBalance, hlBalance);
   if (!reserveCheck.ok) return reserveCheck;
 
@@ -137,9 +134,20 @@ async function checkBalance(hl: HyperliquidService, cb: CoinbaseService): Promis
     return;
   }
 
-  const [hlBalance, cbBalance] = await Promise.all([
+  // awal 인증 상태 확인
+  const authStatus = await cb.checkStatus();
+  if (!authStatus.authenticated) {
+    console.log(JSON.stringify({
+      status: "error",
+      error: "Agentic Wallet이 인증되지 않았습니다. `bunx awal auth login <email>` 로 인증해주세요.",
+    }));
+    return;
+  }
+
+  const [hlBalance, cbBalance, walletAddress] = await Promise.all([
     hl.getBalance(),
     cb.getUsdcBalance(),
+    cb.getAddress(),
   ]);
 
   const snapshot: BalanceSnapshot = {
@@ -167,6 +175,9 @@ async function checkBalance(hl: HyperliquidService, cb: CoinbaseService): Promis
   console.log(JSON.stringify({
     status: "success",
     mode: "live",
+    wallet_email: authStatus.email,
+    wallet_address: walletAddress,
+    network: "base",
     balances: {
       coinbase: cbBalance,
       hyperliquid: hlBalance,
@@ -181,7 +192,6 @@ async function fundHyperliquid(
   hl: HyperliquidService,
   amount: number,
 ): Promise<void> {
-  // 잔고 조회하여 최소 보유 잔고 검증
   let cbBalance = Infinity;
   let hlBalance = 0;
   if (!isPaperMode()) {
@@ -221,7 +231,7 @@ async function fundHyperliquid(
     console.log(JSON.stringify({
       status: "success",
       mode: "paper",
-      transfer: { direction: "coinbase → hyperliquid", amount, currency: "USDC" },
+      transfer: { direction: "coinbase(base) → hyperliquid", amount, currency: "USDC" },
     }, null, 2));
     return;
   }
@@ -230,13 +240,13 @@ async function fundHyperliquid(
     const result = await cb.fundHyperliquid(amount);
 
     const transfer: WalletTransfer = {
-      transfer_id: result.id,
+      transfer_id: `awal_fund_${Date.now()}`,
       timestamp: new Date().toISOString(),
       direction: "coinbase_to_hl",
       amount,
       currency: "USDC",
       status: result.status === "completed" ? "completed" : "pending",
-      tx_hash: result.tx_hash,
+      tx_hash: result.txHash,
     };
     insertWalletTransfer(transfer);
 
@@ -244,12 +254,11 @@ async function fundHyperliquid(
       status: "success",
       mode: "live",
       transfer: {
-        id: result.id,
-        direction: "coinbase → hyperliquid",
+        direction: "coinbase(base) → hyperliquid",
         amount,
         currency: "USDC",
         tx_status: result.status,
-        tx_hash: result.tx_hash,
+        tx_hash: result.txHash,
       },
     }, null, 2));
   } catch (err) {
@@ -264,7 +273,6 @@ async function withdrawToCoinbase(
   cb: CoinbaseService,
   amount: number,
 ): Promise<void> {
-  // 잔고 조회하여 최소 보유 잔고 검증
   let cbBalance = 0;
   let hlBalance = Infinity;
   if (!isPaperMode()) {
@@ -280,14 +288,35 @@ async function withdrawToCoinbase(
     return;
   }
 
-  // 화이트리스트 검증 (출금 대상 주소)
-  const coinbaseAddress = process.env.COINBASE_DEPOSIT_ADDRESS || "";
-  if (coinbaseAddress) {
-    const wlCheck = validateWhitelist(coinbaseAddress);
-    if (!wlCheck.ok) {
-      console.log(JSON.stringify({ status: "rejected", reason: wlCheck.reason }));
+  // Agentic Wallet 주소 조회 (출금 대상)
+  let coinbaseAddress: string;
+  if (isPaperMode()) {
+    coinbaseAddress = "0xPAPER_MODE_ADDRESS";
+  } else {
+    try {
+      coinbaseAddress = await cb.getAddress();
+    } catch {
+      console.log(JSON.stringify({
+        status: "error",
+        error: "Agentic Wallet 주소 조회 실패. `bunx awal auth login`으로 인증해주세요.",
+      }));
       return;
     }
+  }
+
+  if (!coinbaseAddress) {
+    console.log(JSON.stringify({
+      status: "error",
+      error: "Agentic Wallet 주소를 가져올 수 없습니다.",
+    }));
+    return;
+  }
+
+  // 화이트리스트 검증
+  const wlCheck = validateWhitelist(coinbaseAddress);
+  if (!wlCheck.ok) {
+    console.log(JSON.stringify({ status: "rejected", reason: wlCheck.reason }));
+    return;
   }
 
   if (isPaperMode()) {
@@ -304,20 +333,15 @@ async function withdrawToCoinbase(
     console.log(JSON.stringify({
       status: "success",
       mode: "paper",
-      transfer: { direction: "hyperliquid → coinbase", amount, currency: "USDC" },
+      transfer: { direction: "hyperliquid → coinbase(base)", amount, currency: "USDC" },
     }, null, 2));
     return;
   }
 
-  // 실제 출금
-  if (!coinbaseAddress) {
-    console.log(JSON.stringify({
-      status: "error",
-      error: "COINBASE_DEPOSIT_ADDRESS가 설정되지 않았습니다. .env에 추가해주세요.",
-    }));
-    return;
-  }
-
+  // 실제 출금 (HyperLiquid → Agentic Wallet 주소)
+  // 참고: HyperLiquid withdraw는 Arbitrum 네트워크로 전송됨
+  // Agentic Wallet 주소가 동일한 EVM 주소이므로 수신 가능하지만,
+  // awal balance에는 Base 잔고만 표시됨 (Arbitrum 수신분은 별도 브릿지 필요)
   try {
     const result = await hl.withdraw({
       amount: amount.toString(),
@@ -331,7 +355,7 @@ async function withdrawToCoinbase(
       amount,
       currency: "USDC",
       status: "completed",
-      tx_hash: (result?.response as any)?.hash || undefined,
+      tx_hash: (result?.response as Record<string, unknown>)?.hash as string | undefined,
     };
     insertWalletTransfer(transfer);
 
@@ -339,9 +363,11 @@ async function withdrawToCoinbase(
       status: "success",
       mode: "live",
       transfer: {
-        direction: "hyperliquid → coinbase",
+        direction: "hyperliquid(arbitrum) → coinbase wallet",
+        destination: coinbaseAddress,
         amount,
         currency: "USDC",
+        note: "HyperLiquid은 Arbitrum으로 출금. Agentic Wallet에서 Base 잔고로 보려면 브릿지 필요.",
         result,
       },
     }, null, 2));
@@ -391,14 +417,11 @@ async function processRequests(
 
   try {
     if (request.type === "fund") {
-      // 코인베이스 → 하이퍼리퀴드 입금
       await fundHyperliquid(cb, hl, request.amount);
     } else if (request.type === "withdraw") {
-      // 하이퍼리퀴드 → 코인베이스 출금
       await withdrawToCoinbase(hl, cb, request.amount);
     }
 
-    // 처리 완료
     request.status = "completed";
     await atomicWrite(requestPath, request);
 
@@ -443,7 +466,6 @@ async function autoFund(
     ]);
   }
 
-  // 하이퍼리퀴드 잔고가 최소치 이하인 경우 자동 충전
   if (hlBalance >= minHl) {
     console.log(JSON.stringify({
       status: "sufficient",
@@ -453,7 +475,6 @@ async function autoFund(
     return;
   }
 
-  // 충전 금액: 최소 보유량 + 버퍼
   const target = minHl * (1 + bufferPct);
   const needed = target - hlBalance;
 
@@ -462,7 +483,6 @@ async function autoFund(
     return;
   }
 
-  // 코인베이스 잔고 확인
   const minCb = config.wallet_agent.security.min_reserve_coinbase;
   const available = cbBalance - minCb;
 
@@ -483,7 +503,7 @@ async function autoFund(
 
   logger.info("자동 충전 실행", {
     hl_balance: hlBalance,
-    target: target,
+    target,
     fund_amount: fundAmount,
   });
 
@@ -523,6 +543,7 @@ async function dailyReport(hl: HyperliquidService, cb: CoinbaseService): Promise
     status: "success",
     report: {
       date: new Date().toISOString().split("T")[0],
+      network: "base (agentic wallet) + arbitrum (hyperliquid)",
       balances,
       today_transfers_total: todayTransfers,
       daily_limit_remaining: config.wallet_agent.transfers.max_daily_transfer - todayTransfers,
@@ -552,7 +573,7 @@ async function main(): Promise<void> {
   const hl = new HyperliquidService();
   const cb = new CoinbaseService();
 
-  // 실제 모드에서 지갑 초기화
+  // 실제 모드에서 하이퍼리퀴드 지갑 초기화
   if (!isPaperMode() && ["balance", "withdraw", "process-requests", "auto-fund", "daily-report"].includes(action)) {
     const pk = process.env.HYPERLIQUID_PRIVATE_KEY;
     if (pk) await hl.initWallet(pk);

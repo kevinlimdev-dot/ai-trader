@@ -1,189 +1,292 @@
+/**
+ * Coinbase Agentic Wallet 서비스
+ *
+ * awal CLI를 통해 Agentic Wallet을 제어한다.
+ * - 잔고 조회: bunx awal balance --json
+ * - 주소 조회: bunx awal address --json
+ * - USDC 전송: bunx awal send <amount> <address> --json
+ *
+ * 사전 조건: `bunx awal auth login` + `bunx awal auth verify`로 인증 완료
+ */
+
 import { createLogger } from "../utils/logger";
-import { loadConfig } from "../utils/config";
 
-const logger = createLogger("Coinbase");
+const logger = createLogger("Coinbase:AW");
 
-// ─── 응답 타입 정의 ───
+// ─── 실제 CLI 응답 타입 (검증됨) ───
 
-interface CoinbaseBalance {
-  currency: string;
-  amount: string;
+interface AwalStatusResponse {
+  server: { running: boolean; pid: number };
+  auth: { authenticated: boolean; email: string };
 }
 
-interface CoinbaseSendResult {
-  id: string;
+interface AwalBalanceResponse {
+  address: string;
+  chain: string;
+  balances: {
+    USDC: { raw: string; formatted: string; decimals: number };
+    ETH: { raw: string; formatted: string; decimals: number };
+    WETH: { raw: string; formatted: string; decimals: number };
+  };
+  timestamp: string;
+}
+
+interface AwalCliResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+  raw?: string;
+}
+
+interface AwalSendResult {
   status: string;
-  tx_hash?: string;
+  txHash?: string;
+  amount?: string;
+  to?: string;
 }
 
-interface CoinbaseApiError {
-  errors?: Array<{ id: string; message: string }>;
-  message?: string;
+// ─── 설정 ───
+
+const CLI_TIMEOUT_MS = 30_000;
+
+/**
+ * stdout에서 JSON 부분만 추출한다.
+ * awal CLI는 "- Checking status..." 같은 프로그레스 라인을 출력한 뒤 JSON을 출력하므로
+ * 마지막 유효 JSON 블록만 파싱한다.
+ */
+function extractJson(stdout: string): unknown | null {
+  const trimmed = stdout.trim();
+
+  // 문자열 전체가 JSON인 경우 (문자열 리터럴 "0x..." 포함)
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // pass
+  }
+
+  // 마지막 { ... } 또는 [ ... ] 블록 추출
+  const lastBrace = trimmed.lastIndexOf("}");
+  const lastBracket = trimmed.lastIndexOf("]");
+  const endIdx = Math.max(lastBrace, lastBracket);
+
+  if (endIdx === -1) return null;
+
+  const endChar = trimmed[endIdx];
+  const startChar = endChar === "}" ? "{" : "[";
+
+  // 중첩 깊이를 고려하여 매칭되는 시작 위치 찾기
+  let depth = 0;
+  for (let i = endIdx; i >= 0; i--) {
+    if (trimmed[i] === endChar) depth++;
+    if (trimmed[i] === startChar) depth--;
+    if (depth === 0) {
+      try {
+        return JSON.parse(trimmed.slice(i, endIdx + 1));
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
 }
 
-// ─── 재시도 설정 ───
+/**
+ * awal CLI 명령을 실행하고 결과를 반환한다.
+ */
+async function runAwalCli(args: string[]): Promise<AwalCliResult> {
+  const fullArgs = ["awal", ...args, "--json"];
 
-const MAX_RETRIES = 3;
-const BASE_DELAY_MS = 500;
-const REQUEST_TIMEOUT_MS = 10_000;
+  logger.debug("awal CLI 실행", { args: fullArgs });
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  try {
+    const proc = Bun.spawn(["bunx", ...fullArgs], {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env },
+    });
+
+    // 타임아웃 처리
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        proc.kill();
+        reject(new Error(`awal CLI 타임아웃 (${CLI_TIMEOUT_MS}ms)`));
+      }, CLI_TIMEOUT_MS);
+    });
+
+    const exitCode = await Promise.race([proc.exited, timeoutPromise]);
+
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    if (exitCode !== 0) {
+      logger.error("awal CLI 실패", { exitCode, stderr, stdout });
+      return {
+        success: false,
+        error: stderr.trim() || stdout.trim() || `Exit code: ${exitCode}`,
+        raw: stdout,
+      };
+    }
+
+    // JSON 추출 (프로그레스 라인 무시)
+    const data = extractJson(stdout);
+    if (data !== null) {
+      return { success: true, data, raw: stdout };
+    }
+
+    // JSON이 아닌 출력도 성공으로 처리
+    return { success: true, data: stdout.trim(), raw: stdout };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("awal CLI 실행 오류", { error: msg });
+    return { success: false, error: msg };
+  }
 }
 
 export class CoinbaseService {
-  private baseUrl: string;
-  private walletId: string;
-  private headers: Record<string, string>;
+  /**
+   * 인증 상태 확인
+   *
+   * 실제 응답:
+   * { server: { running: true, pid: 72251 },
+   *   auth: { authenticated: true, email: "user@example.com" } }
+   */
+  async checkStatus(): Promise<{ authenticated: boolean; email?: string }> {
+    const result = await runAwalCli(["status"]);
 
-  constructor() {
-    const config = loadConfig();
-    this.baseUrl = config.wallet_agent.coinbase.base_url;
-    this.walletId = process.env.COINBASE_WALLET_ID || "";
+    if (!result.success) {
+      return { authenticated: false };
+    }
 
-    this.headers = {
-      Authorization: `Bearer ${process.env.COINBASE_API_KEY}`,
-      "Content-Type": "application/json",
-      "X-Wallet-Secret": process.env.COINBASE_WALLET_SECRET || "",
+    const data = result.data as AwalStatusResponse;
+    return {
+      authenticated: data?.auth?.authenticated ?? false,
+      email: data?.auth?.email,
     };
   }
 
   /**
-   * HTTP 요청 + 타임아웃 + exponential backoff 재시도
+   * 지갑 주소 조회
+   *
+   * 실제 응답: "0xB9C971e2d682d4e90b1dd0eaCA7385e6887F3f76" (문자열)
    */
-  private async request<T>(
-    endpoint: string,
-    options?: RequestInit,
-  ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-    let lastError: Error | null = null;
+  async getAddress(): Promise<string> {
+    const result = await runAwalCli(["address"]);
 
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    if (!result.success) {
+      throw new Error(`지갑 주소 조회 실패: ${result.error}`);
+    }
 
-        try {
-          const response = await fetch(url, {
-            ...options,
-            headers: { ...this.headers, ...options?.headers },
-            signal: controller.signal,
-          });
+    // 문자열로 직접 반환됨
+    if (typeof result.data === "string") {
+      return result.data;
+    }
 
-          if (!response.ok) {
-            const text = await response.text();
+    // 객체인 경우 address 필드 시도
+    const data = result.data as Record<string, unknown>;
+    return (data?.address as string) || "";
+  }
 
-            // Coinbase 구조화된 에러 파싱
-            let errorDetail: string;
-            try {
-              const apiErr: CoinbaseApiError = JSON.parse(text);
-              if (apiErr.errors && apiErr.errors.length > 0) {
-                errorDetail = apiErr.errors.map((e) => `[${e.id}] ${e.message}`).join("; ");
-              } else if (apiErr.message) {
-                errorDetail = apiErr.message;
-              } else {
-                errorDetail = text;
-              }
-            } catch {
-              errorDetail = text;
-            }
+  /**
+   * USDC 잔고 조회 (Base 네트워크)
+   *
+   * 실제 응답:
+   * { address: "0x...", chain: "Base",
+   *   balances: { USDC: { raw: "0", formatted: "0.00", decimals: 6 }, ... } }
+   */
+  async getUsdcBalance(chain?: string): Promise<number> {
+    const args = ["balance"];
+    if (chain) args.push("--chain", chain);
 
-            // 429, 5xx는 재시도
-            if (response.status === 429 || response.status >= 500) {
-              throw new Error(`Coinbase API ${response.status}: ${errorDetail}`);
-            }
+    const result = await runAwalCli(args);
 
-            // 4xx는 재시도 불가
-            throw new NonRetryableError(`Coinbase API ${response.status}: ${errorDetail}`);
-          }
+    if (!result.success) {
+      throw new Error(`잔고 조회 실패: ${result.error}`);
+    }
 
-          return response.json() as Promise<T>;
-        } finally {
-          clearTimeout(timeout);
-        }
-      } catch (err) {
-        if (err instanceof NonRetryableError) {
-          throw err;
-        }
+    const data = result.data as AwalBalanceResponse;
 
-        lastError = err instanceof Error ? err : new Error(String(err));
+    if (typeof data === "object" && data !== null && data.balances) {
+      const usdc = data.balances.USDC;
+      if (usdc) {
+        return parseFloat(usdc.formatted) || 0;
+      }
+    }
 
-        if (attempt < MAX_RETRIES - 1) {
-          const delay = BASE_DELAY_MS * Math.pow(2, attempt);
-          logger.warn(`Coinbase API 재시도 ${attempt + 1}/${MAX_RETRIES}`, {
-            endpoint,
-            error: lastError.message,
-            next_retry_ms: delay,
-          });
-          await sleep(delay);
+    return 0;
+  }
+
+  /**
+   * 전체 잔고 조회 (모든 토큰)
+   */
+  async getBalances(): Promise<Record<string, number>> {
+    const args = ["balance"];
+    const result = await runAwalCli(args);
+
+    if (!result.success) {
+      throw new Error(`잔고 조회 실패: ${result.error}`);
+    }
+
+    const data = result.data as AwalBalanceResponse;
+    const balances: Record<string, number> = {};
+
+    if (typeof data === "object" && data !== null && data.balances) {
+      for (const [token, info] of Object.entries(data.balances)) {
+        const val = parseFloat((info as { formatted: string }).formatted);
+        if (!isNaN(val)) {
+          balances[token] = val;
         }
       }
     }
 
-    throw lastError || new Error("알 수 없는 에러");
-  }
-
-  async getBalances(): Promise<Record<string, number>> {
-    if (!this.walletId) {
-      throw new Error("COINBASE_WALLET_ID가 설정되지 않았습니다");
-    }
-
-    const data = await this.request<{ data: CoinbaseBalance[] }>(
-      `/wallets/${this.walletId}/balances`,
-    );
-
-    const balances: Record<string, number> = {};
-    for (const b of data.data) {
-      balances[b.currency] = parseFloat(b.amount);
-    }
     return balances;
   }
 
-  async getUsdcBalance(): Promise<number> {
-    const balances = await this.getBalances();
-    return balances["USDC"] || 0;
-  }
-
+  /**
+   * USDC 전송
+   */
   async sendUsdc(params: {
     amount: number;
     toAddress: string;
-    network?: string;
-  }): Promise<CoinbaseSendResult> {
-    if (!this.walletId) {
-      throw new Error("COINBASE_WALLET_ID가 설정되지 않았습니다");
-    }
-
-    const config = loadConfig();
-    const { amount, toAddress, network } = params;
+    chain?: string;
+  }): Promise<AwalSendResult> {
+    const { amount, toAddress, chain } = params;
 
     if (amount <= 0) {
       throw new Error("전송 금액은 0보다 커야 합니다");
     }
 
-    logger.info("USDC 전송 시작", { amount, toAddress, network });
+    logger.info("USDC 전송 시작", { amount, toAddress, chain });
 
-    const result = await this.request<{ data: CoinbaseSendResult }>(
-      `/wallets/${this.walletId}/send`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          currency: "USDC",
-          amount: amount.toString(),
-          to_address: toAddress,
-          network: network || config.wallet_agent.coinbase.transfer_network,
-        }),
-      },
-    );
+    const args = ["send", amount.toString(), toAddress];
+    if (chain) args.push("--chain", chain);
 
-    logger.info("USDC 전송 완료", {
-      id: result.data.id,
-      status: result.data.status,
-      tx_hash: result.data.tx_hash,
-    });
-    return result.data;
+    const result = await runAwalCli(args);
+
+    if (!result.success) {
+      throw new Error(`USDC 전송 실패: ${result.error}`);
+    }
+
+    const data = result.data as Record<string, unknown> | null;
+
+    const sendResult: AwalSendResult = {
+      status: "completed",
+      txHash: (data?.txHash as string)
+        || (data?.tx_hash as string)
+        || (data?.transactionHash as string)
+        || undefined,
+      amount: amount.toString(),
+      to: toAddress,
+    };
+
+    logger.info("USDC 전송 완료", sendResult);
+    return sendResult;
   }
 
-  async fundHyperliquid(amount: number): Promise<CoinbaseSendResult> {
+  /**
+   * 하이퍼리퀴드로 자금 전송 (Base USDC → HyperLiquid 입금 주소)
+   */
+  async fundHyperliquid(amount: number): Promise<AwalSendResult> {
     const depositAddress = process.env.HYPERLIQUID_DEPOSIT_ADDRESS;
     if (!depositAddress) {
       throw new Error("HYPERLIQUID_DEPOSIT_ADDRESS가 설정되지 않았습니다");
@@ -194,13 +297,22 @@ export class CoinbaseService {
       toAddress: depositAddress,
     });
   }
-}
 
-// ─── 재시도 불가 에러 ───
+  /**
+   * 토큰 트레이드 (Base 네트워크에서 스왑)
+   */
+  async trade(
+    amount: number,
+    fromToken: string,
+    toToken: string,
+  ): Promise<unknown> {
+    const args = ["trade", amount.toString(), fromToken, toToken];
+    const result = await runAwalCli(args);
 
-class NonRetryableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "NonRetryableError";
+    if (!result.success) {
+      throw new Error(`트레이드 실패: ${result.error}`);
+    }
+
+    return result.data;
   }
 }

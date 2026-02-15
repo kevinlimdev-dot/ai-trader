@@ -99,9 +99,9 @@ export interface AppConfig {
       balance_check_interval_sec: number;
       low_balance_alert_usdc: number;
     };
-    coinbase: {
-      base_url: string;
-      transfer_network: string;
+    agentic_wallet: {
+      network: string;
+      cli_timeout_ms: number;
     };
     transfers: {
       max_single_transfer: number;

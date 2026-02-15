@@ -2,7 +2,7 @@
 
 ## 1. 개요
 
-`wallet-manager` 스킬은 코인베이스 Agentic Wallet을 통해 자금을 관리한다. 잔고 모니터링, 코인베이스 ↔ 하이퍼리퀴드 자금 이동, 보안 가드레일을 담당한다.
+`wallet-manager` 스킬은 코인베이스 Agentic Wallet(`awal` CLI)을 통해 자금을 관리한다. 잔고 모니터링, 코인베이스 ↔ 하이퍼리퀴드 자금 이동, 보안 가드레일을 담당한다.
 
 ---
 
@@ -11,8 +11,8 @@
 ```markdown
 ---
 name: wallet-manager
-description: 코인베이스 Agentic Wallet과 하이퍼리퀴드 잔고를 관리하고 자금 이동을 처리합니다.
-metadata: {"openclaw":{"requires":{"bins":["bun"]},"primaryEnv":"COINBASE_API_KEY"}}
+description: 코인베이스 Agentic Wallet(awal CLI)과 하이퍼리퀴드 잔고를 관리하고 자금 이동을 처리합니다.
+metadata: {"openclaw":{"requires":{"bins":["bun","npx"]}}}
 ---
 
 ## 목적
@@ -29,34 +29,34 @@ metadata: {"openclaw":{"requires":{"bins":["bun"]},"primaryEnv":"COINBASE_API_KE
 ## 실행 방법
 
 잔고 조회:
-```
+\`\`\`
 bun run {baseDir}/scripts/manage-wallet.ts --action balance
-```
+\`\`\`
 
 자금 충전 (코인베이스 → 하이퍼리퀴드):
-```
+\`\`\`
 bun run {baseDir}/scripts/manage-wallet.ts --action fund --amount 500
-```
+\`\`\`
 
 자금 인출 (하이퍼리퀴드 → 코인베이스):
-```
+\`\`\`
 bun run {baseDir}/scripts/manage-wallet.ts --action withdraw --amount 500
-```
+\`\`\`
 
 대기 중인 자금 요청 처리:
-```
+\`\`\`
 bun run {baseDir}/scripts/manage-wallet.ts --action process-requests
-```
+\`\`\`
 
 자동 충전 (하이퍼리퀴드 잔고 부족 시 자동 입금):
-```
+\`\`\`
 bun run {baseDir}/scripts/manage-wallet.ts --action auto-fund
-```
+\`\`\`
 
 일일 리포트:
-```
+\`\`\`
 bun run {baseDir}/scripts/manage-wallet.ts --action daily-report
-```
+\`\`\`
 
 ## 출력
 
@@ -80,29 +80,79 @@ bun run {baseDir}/scripts/manage-wallet.ts --action daily-report
 
 ## 3. 코인베이스 Agentic Wallet 연동
 
+### 3.1 Agentic Wallet이란?
+
+2026년 2월 출시된 코인베이스의 AI 에이전트 전용 지갑이다. 기존 CDP REST API 대신 **`awal` CLI**를 통해 제어한다.
+
+| 항목 | 내용 |
+|------|------|
+| 인증 방식 | 이메일 OTP (API 키 불필요) |
+| 네트워크 | **Base** (가스비 무료) |
+| 지원 자산 | USDC, Base 네트워크 토큰 |
+| 키 관리 | 코인베이스 인프라에서 관리 (에이전트는 키 접근 불가) |
+| 보안 | KYT 스크리닝, 지출 한도, 가드레일 내장 |
+
+### 3.2 초기 설정 (최초 1회)
+
+```bash
+# 1. 패키지 설치
+bunx skills add coinbase/agentic-wallet-skills
+
+# 2. 이메일 인증 시작
+bunx awal auth login your@email.com
+
+# 3. 이메일로 받은 6자리 코드로 인증 완료
+bunx awal auth verify <flowId> <code>
+
+# 4. 확인
+bunx awal status
+bunx awal address
+bunx awal balance
+```
+
+### 3.3 코드에서 사용
+
+`CoinbaseService`는 내부적으로 `Bun.spawn`으로 `awal` CLI를 호출한다.
+
 ```typescript
-const BASE_URL = "https://api.cdp.coinbase.com/v2";
-const headers = {
-  Authorization: `Bearer ${process.env.COINBASE_API_KEY}`,
-  "Content-Type": "application/json",
-  "X-Wallet-Secret": process.env.COINBASE_WALLET_SECRET!,
-};
+// src/services/coinbase.service.ts
+const cb = new CoinbaseService();
+
+// 인증 상태 확인
+const status = await cb.checkStatus();
+// { authenticated: true, email: "user@example.com" }
 
 // 잔고 조회
-const balances = await fetch(`${BASE_URL}/wallets/${walletId}/balances`, { headers });
+const balance = await cb.getUsdcBalance();
+// 1234.56
 
-// USDC 전송 (하이퍼리퀴드로)
-const tx = await fetch(`${BASE_URL}/wallets/${walletId}/send`, {
-  method: "POST",
-  headers,
-  body: JSON.stringify({
-    currency: "USDC",
-    amount: "500",
-    to_address: process.env.HYPERLIQUID_DEPOSIT_ADDRESS,
-    network: "arbitrum",
-  }),
+// 지갑 주소
+const address = await cb.getAddress();
+// "0x1234...abcd"
+
+// USDC 전송
+const result = await cb.sendUsdc({
+  amount: 500,
+  toAddress: "0xRecipient...",
 });
+// { status: "completed", txHash: "0x...", amount: "500", to: "0x..." }
+
+// 하이퍼리퀴드로 자금 전송
+await cb.fundHyperliquid(500);
 ```
+
+### 3.4 네트워크 주의사항
+
+```
+Agentic Wallet (Base) ──send──→ HyperLiquid (Arbitrum)
+                                    ↑
+                          네트워크가 다름!
+```
+
+- **Agentic Wallet**은 **Base** 네트워크에서 동작
+- **HyperLiquid**는 **Arbitrum** 네트워크에서 입출금
+- 코인베이스 → 하이퍼리퀴드: Base에서 전송 시 브릿지가 필요할 수 있음
+- 하이퍼리퀴드 → 코인베이스: HL은 Arbitrum으로 출금. 같은 EVM 주소이므로 수신 가능하지만, `awal balance`에는 Base 잔고만 표시됨
 
 ---
 
@@ -117,6 +167,8 @@ const tx = await fetch(`${BASE_URL}/wallets/${walletId}/send`, {
 
 모든 전송 전 화이트리스트 주소 확인 + 한도 검증 + 최소 잔고 체크 수행.
 
+추가로 Agentic Wallet 자체에도 KYT 스크리닝과 지출 가드레일이 내장되어 이중 보안이 적용된다.
+
 ---
 
 ## 5. 설정 (config.yaml)
@@ -126,9 +178,9 @@ wallet_agent:
   monitoring:
     balance_check_interval_sec: 30
     low_balance_alert_usdc: 300
-  coinbase:
-    base_url: "https://api.cdp.coinbase.com/v2"
-    transfer_network: "arbitrum"
+  agentic_wallet:
+    network: "base"
+    cli_timeout_ms: 30000
   transfers:
     max_single_transfer: 1000
     max_daily_transfer: 5000
@@ -137,12 +189,25 @@ wallet_agent:
   security:
     min_reserve_coinbase: 500
     min_reserve_hyperliquid: 200
-    whitelist: []   # .env에서 주소 로드
+    whitelist: []   # 비어있으면 모든 주소 허용 (개발 모드)
 ```
 
 ---
 
-## 6. 스크립트 구조
+## 6. 환경 변수
+
+Agentic Wallet은 **API 키가 필요 없다**. `awal` CLI 인증만 완료되면 된다.
+
+```bash
+# .env에 코인베이스 관련 변수 불필요!
+# 대신 최초 1회 인증 필요:
+bunx awal auth login your@email.com
+bunx awal auth verify <flowId> <code>
+```
+
+---
+
+## 7. 스크립트 구조
 
 ```
 skills/wallet-manager/
@@ -151,7 +216,7 @@ skills/wallet-manager/
     └── manage-wallet.ts
 
 src/services/
-└── coinbase.service.ts
+└── coinbase.service.ts    # awal CLI 래퍼
 ```
 
 ---

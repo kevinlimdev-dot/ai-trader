@@ -97,11 +97,11 @@ OpenClaw는 로컬 머신에서 실행되는 **Gateway 데몬**이다. Gateway�
 ### 거래소 API
 
 - **`@nktkas/hyperliquid`** — 하이퍼리퀴드 TypeScript SDK (100% TS, viem 호환)
-- **`@binance/derivatives-trading-usds-futures`** — 바이낸스 USDS-M 선물 공식 SDK
+- **Binance Futures REST API** — 바이낸스 선물 공개 REST API (경량 직접 호출)
 
 ### 지갑 API
 
-- **Coinbase Agentic Wallet** — AI 에이전트 전용 지갑 (REST API + `awal` CLI)
+- **Coinbase Agentic Wallet** — AI 에이전트 전용 지갑 (`awal` CLI, 이메일 OTP 인증, Base 네트워크, 가스비 무료)
 
 ### 데이터베이스
 

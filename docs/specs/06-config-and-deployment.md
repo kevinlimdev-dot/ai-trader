@@ -102,10 +102,7 @@ OpenClaw의 모든 설정은 `~/.openclaw/openclaw.json`에 위치한다.
       },
       "wallet-manager": {
         enabled: true,
-        env: {
-          COINBASE_API_KEY: "KEY_HERE",
-          COINBASE_WALLET_SECRET: "SECRET_HERE",
-        },
+        // Agentic Wallet은 awal CLI 인증 사용 — env 설정 불필요
       },
     },
   },
@@ -218,7 +215,7 @@ openclaw cron add \
 프로젝트 루트 `.env`에 시크릿 저장. `openclaw.json`의 `skills.entries.*.env`에서도 설정 가능하지만, `.env`로 통합 관리하는 것을 권장.
 
 ```bash
-# 바이낸스 선물
+# 바이낸스 선물 (가격 조회용 — 공개 API만 사용 시 없어도 됨)
 BINANCE_API_KEY=your_binance_api_key
 BINANCE_API_SECRET=your_binance_api_secret
 
@@ -227,9 +224,8 @@ HYPERLIQUID_PRIVATE_KEY=0xyour_private_key
 HYPERLIQUID_DEPOSIT_ADDRESS=0xyour_deposit_address
 
 # 코인베이스 Agentic Wallet
-COINBASE_API_KEY=your_coinbase_key
-COINBASE_WALLET_SECRET=your_wallet_secret
-COINBASE_WALLET_ID=your_wallet_id
+# API 키 불필요 — awal CLI로 이메일 OTP 인증
+# 사전 설정: bunx awal auth login your@email.com → bunx awal auth verify <flowId> <code>
 
 # 데이터베이스
 DATABASE_PATH=data/ai-trader.db
@@ -278,9 +274,21 @@ trade_agent:
     kill_switch_file: "data/KILL_SWITCH"
 
 wallet_agent:
+  monitoring:
+    balance_check_interval_sec: 30
+    low_balance_alert_usdc: 300
+  agentic_wallet:
+    network: "base"
+    cli_timeout_ms: 30000
   transfers:
     max_single_transfer: 1000
     max_daily_transfer: 5000
+    auto_fund_enabled: true
+    auto_fund_buffer_pct: 0.20
+  security:
+    min_reserve_coinbase: 500
+    min_reserve_hyperliquid: 200
+    whitelist: []
 
 database:
   path: "data/ai-trader.db"
@@ -304,14 +312,15 @@ database:
     "setup-db": "bun run src/db/schema.ts"
   },
   "dependencies": {
-    "@binance/derivatives-trading-usds-futures": "latest",
-    "@nktkas/hyperliquid": "latest",
-    "yaml": "latest",
-    "technicalindicators": "latest"
+    "@nktkas/hyperliquid": "^0.31.0",
+    "yaml": "^2.8.2",
+    "technicalindicators": "^3.1.0"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "latest"
+    "@types/bun": "^1.3.9",
+    "@types/node": "^25.2.3",
+    "typescript": "^5.9.3",
+    "viem": "^2.45.3"
   }
 }
 ```
@@ -354,13 +363,18 @@ bun install
 # 2. DB 초기화
 bun run setup-db
 
-# 3. OpenClaw Gateway 실행 (별도 터미널 또는 데몬)
+# 3. Agentic Wallet 인증 (최초 1회)
+bunx awal auth login your@email.com
+bunx awal auth verify <flowId> <code>
+bunx awal status  # 인증 확인
+
+# 4. OpenClaw Gateway 실행 (별도 터미널 또는 데몬)
 openclaw gateway
 
-# 4. 크론 작업 등록 (최초 1회)
+# 5. 크론 작업 등록 (최초 1회)
 # → 위 섹션 5의 cron add 명령 실행
 
-# 5. 대시보드에서 모니터링
+# 6. 대시보드에서 모니터링
 openclaw dashboard
 ```
 

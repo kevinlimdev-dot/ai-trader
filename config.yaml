@@ -98,9 +98,9 @@ wallet_agent:
   monitoring:
     balance_check_interval_sec: 30
     low_balance_alert_usdc: 300
-  coinbase:
-    base_url: "https://api.cdp.coinbase.com/v2"
-    transfer_network: "arbitrum"
+  agentic_wallet:
+    network: "base"                # Agentic Wallet 네트워크 (Base)
+    cli_timeout_ms: 30000          # awal CLI 타임아웃
   transfers:
     max_single_transfer: 1000
     max_daily_transfer: 5000
