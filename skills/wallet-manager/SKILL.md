@@ -19,8 +19,8 @@ bunx awal auth verify <flowId> <code>
 
 ## 사용 시나리오
 
-- 사용자는 **Coinbase Agentic Wallet 하나에만 USDC 입금**
-- 봇이 HyperLiquid 거래에 필요한 자금을 **자동으로 배분**
+- 사용자는 **HyperLiquid 입금 주소(Arbitrum)에 USDC를 직접 입금** (기본)
+- Coinbase Agentic Wallet에 USDC를 입금한 경우, 봇이 HyperLiquid로 **자동 배분**
 - 거래 전 `auto-rebalance`로 잔고 부족을 사전 방지
 - HyperLiquid에 과도한 자금이 쌓이면 Coinbase로 자동 회수
 

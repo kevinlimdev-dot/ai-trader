@@ -71,7 +71,7 @@ OpenClaw는 로컬 머신에서 실행되는 **Gateway 데몬**이다. Gateway�
 | **data-collector** | `skills/data-collector/` | 바이낸스 선물 + 하이퍼리퀴드 가격 수집 | Binance Futures, HyperLiquid Info API |
 | **analyzer** | `skills/analyzer/` | 가격 차이 분석, 기술적 지표, 매매 시그널 생성 | 내부 데이터 |
 | **trader** | `skills/trader/` | 하이퍼리퀴드 주문 실행, 포지션 관리 | HyperLiquid Exchange API |
-| **wallet-manager** | `skills/wallet-manager/` | 코인베이스 Agentic Wallet 자금 관리 | Coinbase Agentic Wallet |
+| **wallet-manager** | `skills/wallet-manager/` | HyperLiquid 잔고 모니터링 + Coinbase Agentic Wallet 자금 리밸런싱 | HyperLiquid, Coinbase Agentic Wallet |
 
 ---
 
@@ -99,9 +99,10 @@ OpenClaw는 로컬 머신에서 실행되는 **Gateway 데몬**이다. Gateway�
 - **`@nktkas/hyperliquid`** — 하이퍼리퀴드 TypeScript SDK (100% TS, viem 호환)
 - **Binance Futures REST API** — 바이낸스 선물 공개 REST API (경량 직접 호출)
 
-### 지갑 API
+### 지갑 / 입금
 
-- **Coinbase Agentic Wallet** — AI 에이전트 전용 지갑 (`awal` CLI, 이메일 OTP 인증, Base 네트워크, 가스비 무료)
+- **HyperLiquid 입금** — 사용자가 Arbitrum USDC를 HyperLiquid 입금 주소(`HYPERLIQUID_DEPOSIT_ADDRESS`)로 직접 입금
+- **Coinbase Agentic Wallet** — AI 에이전트 전용 보조 지갑 (`awal` CLI, 이메일 OTP 인증, Base 네트워크, 가스비 무료). 자동 리밸런싱에 활용
 
 ### 데이터베이스
 

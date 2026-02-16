@@ -7,7 +7,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const script = body.script as string;
 	const args = body.args as string[] || [];
 
-	const validScripts = ['collect', 'analyze', 'trade', 'monitor', 'positions', 'close-all', 'emergency', 'daily-summary', 'balance', 'daily-report', 'pipeline'];
+	const validScripts = ['collect', 'analyze', 'trade', 'monitor', 'positions', 'close-all', 'emergency', 'daily-summary', 'balance', 'daily-report', 'auto-rebalance', 'pipeline'];
 	if (!validScripts.includes(script)) {
 		return json({ success: false, error: `Invalid script: ${script}` }, { status: 400 });
 	}

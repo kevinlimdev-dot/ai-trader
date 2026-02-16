@@ -71,15 +71,18 @@ async function collectForSymbol(
   binance: BinanceService,
   hl: HyperliquidService,
   symbolConfig: { symbol: string; binance_pair: string; hyperliquid_pair: string },
+  hlMidPrices?: Record<string, number>,
 ): Promise<PriceSnapshot> {
   const { symbol, binance_pair, hyperliquid_pair } = symbolConfig;
 
   // 병렬로 두 거래소 데이터 수집
-  const [binanceData, hlBook, hlMid] = await Promise.all([
+  // hlMidPrices가 미리 전달되면 API 호출 절약 (50개 코인 최적화)
+  const [binanceData, hlBook] = await Promise.all([
     binance.getFullData(binance_pair),
     hl.getL2Book(hyperliquid_pair),
-    hl.getMidPrice(hyperliquid_pair),
   ]);
+
+  const hlMid = hlMidPrices?.[hyperliquid_pair] ?? await hl.getMidPrice(hyperliquid_pair);
 
   // 스프레드 계산
   const binanceMid = binanceData.markPrice;
@@ -142,11 +145,22 @@ async function main(): Promise<void> {
   const errors: string[] = [];
   const anomalies: string[] = [];
 
+  // HL mid prices를 한 번만 가져와서 재사용 (50개 코인 최적화)
+  let hlMidPrices: Record<string, number> = {};
+  try {
+    hlMidPrices = await hl.getAllMidPrices();
+    logger.info("HL mid prices 일괄 조회 완료", { count: Object.keys(hlMidPrices).length });
+  } catch (err) {
+    logger.warn("HL mid prices 일괄 조회 실패, 개별 조회로 전환", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   for (const sym of symbols) {
     let retries = 3;
     while (retries > 0) {
       try {
-        const snapshot = await collectForSymbol(binance, hl, sym);
+        const snapshot = await collectForSymbol(binance, hl, sym, hlMidPrices);
         snapshots.push(snapshot);
 
         // 이상치 플래그 기록

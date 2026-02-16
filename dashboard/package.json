@@ -5,6 +5,8 @@
 	"type": "module",
 	"scripts": {
 		"dev": "bun --bun vite dev",
+		"dev:full": "node scripts/awal-sidecar.cjs & bun --bun vite dev",
+		"sidecar": "node scripts/awal-sidecar.cjs",
 		"build": "bun --bun vite build",
 		"preview": "bun --bun vite preview",
 		"prepare": "svelte-kit sync || echo ''",

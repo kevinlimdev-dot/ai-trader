@@ -202,6 +202,45 @@ export function getLatestPricesWithChange(): PriceWithChange[] {
 	return prices;
 }
 
+// ─── Awal 캐시 파일 읽기 (사이드카 프로세스가 갱신) ───
+
+const AWAL_CACHE_FILE = '/tmp/ai-trader-awal-cache.json';
+
+interface AwalCache {
+	status: 'ok' | 'error' | 'unknown';
+	balance: number;
+	address: string | null;
+	updatedAt: string | null;
+	error: string | null;
+}
+
+function readAwalCache(): AwalCache {
+	try {
+		if (!existsSync(AWAL_CACHE_FILE)) {
+			return { status: 'unknown', balance: 0, address: null, updatedAt: null, error: 'sidecar not running' };
+		}
+		const raw = readFileSync(AWAL_CACHE_FILE, 'utf-8');
+		const data = JSON.parse(raw);
+
+		// 캐시가 60초 이상 오래되었으면 stale 처리
+		if (data.updatedAt) {
+			const age = Date.now() - new Date(data.updatedAt).getTime();
+			if (age > 60_000) {
+				return { ...data, status: 'unknown', error: 'cache stale (sidecar may have stopped)' };
+			}
+		}
+
+		return data;
+	} catch {
+		return { status: 'unknown', balance: 0, address: null, updatedAt: null, error: 'cache read error' };
+	}
+}
+
+// awalCache를 직접 참조하는 곳을 위한 getter
+function getAwalCache(): AwalCache {
+	return readAwalCache();
+}
+
 // ─── Live Balances (실시간 잔고 조회) ───
 
 interface LiveBalance {
@@ -209,17 +248,25 @@ interface LiveBalance {
 	hyperliquid: number;
 	total: number;
 	timestamp: string;
+	hlDetail?: HlBalanceDetail;
 }
 
-let cachedLiveBalance: LiveBalance | null = null;
+let cachedLiveBalance: (LiveBalance & { hlDetail?: HlBalanceDetail }) | null = null;
 let liveBalanceFetchedAt = 0;
 const LIVE_BALANCE_CACHE_TTL = 15_000; // 15초 캐시
 
-async function fetchHlBalance(): Promise<number> {
+interface HlBalanceDetail {
+	perp: number;
+	spot: { coin: string; total: string; hold: string; usdValue: number }[];
+	spotTotalUsd: number;
+	totalUsd: number;
+}
+
+async function fetchHlBalance(): Promise<HlBalanceDetail> {
+	const empty: HlBalanceDetail = { perp: 0, spot: [], spotTotalUsd: 0, totalUsd: 0 };
 	try {
-		// .env에서 private key 읽기
 		const envPath = resolve(PROJECT_ROOT, '.env');
-		if (!existsSync(envPath)) return 0;
+		if (!existsSync(envPath)) return empty;
 
 		const envContent = readFileSync(envPath, 'utf-8');
 		let privateKey = '';
@@ -230,93 +277,107 @@ async function fetchHlBalance(): Promise<number> {
 			}
 		}
 
-		if (!privateKey || privateKey === '0xyour_private_key' || privateKey.length < 10) return 0;
+		if (!privateKey || privateKey === '0xyour_private_key' || privateKey.length < 10) return empty;
 
-		// viem으로 주소 유도
 		const { privateKeyToAccount } = await import('viem/accounts');
 		const formattedKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
 		const account = privateKeyToAccount(formattedKey as `0x${string}`);
 
-		// HyperLiquid API로 잔고 조회
 		const { HttpTransport, InfoClient } = await import('@nktkas/hyperliquid');
-
 		const configData = getConfig() as { trade_agent?: { hyperliquid?: { base_url?: string } } };
 		const baseUrl = configData?.trade_agent?.hyperliquid?.base_url || 'https://api.hyperliquid.xyz';
 
 		const transport = new HttpTransport({ apiUrl: baseUrl });
 		const infoClient = new InfoClient({ transport });
-		const state = await infoClient.clearinghouseState({ user: account.address }) as {
-			marginSummary: { accountValue: string };
-		};
 
-		return parseFloat(state.marginSummary.accountValue) || 0;
-	} catch (err) {
-		console.error('[HL Balance]', err instanceof Error ? err.message : err);
-		return 0;
-	}
-}
+		const timeout = <T>(p: Promise<T>, ms: number, label: string) =>
+			Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`${label} timeout`)), ms))]);
 
-async function fetchCbBalance(): Promise<number> {
-	try {
-		const proc = Bun.spawn(['bunx', 'awal', 'balance', '--json'], {
-			stdout: 'pipe',
-			stderr: 'pipe',
-			env: { ...process.env },
-		});
+		// 선물 마진 + 스팟 잔고 + 스팟 가격 병렬 조회
+		const [perpResult, spotResult, spotMeta] = await Promise.all([
+			timeout(infoClient.clearinghouseState({ user: account.address }), 10_000, 'perp').catch(() => null),
+			timeout(infoClient.spotClearinghouseState({ user: account.address }), 10_000, 'spot').catch(() => null),
+			timeout(infoClient.spotMeta(), 10_000, 'spotMeta').catch(() => null),
+		]);
 
-		const timer = setTimeout(() => proc.kill(), 10_000);
-		const exitCode = await proc.exited;
-		clearTimeout(timer);
+		// 1. 선물 마진 잔고
+		const perpVal = perpResult ? parseFloat((perpResult as any).marginSummary?.accountValue) || 0 : 0;
 
-		if (exitCode !== 0) return 0;
+		// 2. 스팟 잔고
+		const spotBalances: HlBalanceDetail['spot'] = [];
+		let spotTotalUsd = 0;
 
-		const stdout = await new Response(proc.stdout).text();
-		const trimmed = stdout.trim();
-
-		// JSON 추출
-		let data: any = null;
-		try {
-			data = JSON.parse(trimmed);
-		} catch {
-			// JSON이 아닌 경우 마지막 {} 블록 추출
-			const lastBrace = trimmed.lastIndexOf('}');
-			if (lastBrace >= 0) {
-				let depth = 0;
-				for (let i = lastBrace; i >= 0; i--) {
-					if (trimmed[i] === '}') depth++;
-					if (trimmed[i] === '{') depth--;
-					if (depth === 0) {
-						try { data = JSON.parse(trimmed.slice(i, lastBrace + 1)); } catch { /* ignore */ }
-						break;
+		if (spotResult && (spotResult as any).balances) {
+			// 스팟 토큰 index → mid price 매핑 (allMids 사용)
+			let midPrices: Record<string, number> = {};
+			try {
+				const mids = await timeout(infoClient.allMids(), 5_000, 'allMids');
+				if (mids && typeof mids === 'object') {
+					for (const [sym, price] of Object.entries(mids as Record<string, string>)) {
+						midPrices[sym] = parseFloat(price) || 0;
 					}
 				}
+			} catch { /* 가격 조회 실패 시 entryNtl 사용 */ }
+
+			// 스팟 메타에서 token index → name 매핑
+			const tokenNameMap: Record<number, string> = {};
+			if (spotMeta && (spotMeta as any).tokens) {
+				for (const t of (spotMeta as any).tokens) {
+					tokenNameMap[t.index] = t.name;
+				}
+			}
+
+			for (const b of (spotResult as any).balances) {
+				const total = parseFloat(b.total) || 0;
+				if (total <= 0) continue;
+
+				const coin: string = b.coin;
+				let usdValue = 0;
+
+				if (coin === 'USDC' || coin === 'USDT') {
+					usdValue = total;
+				} else {
+					// mid price로 USD 환산
+					const priceKey = coin; // allMids에서의 키
+					if (midPrices[priceKey] && midPrices[priceKey] > 0) {
+						usdValue = total * midPrices[priceKey];
+					} else {
+						// fallback: entryNtl 사용
+						usdValue = parseFloat(b.entryNtl) || 0;
+					}
+				}
+
+				spotBalances.push({ coin, total: b.total, hold: b.hold, usdValue });
+				spotTotalUsd += usdValue;
 			}
 		}
 
-		if (data?.balances?.USDC) {
-			return parseFloat(data.balances.USDC.formatted) || 0;
-		}
+		const totalUsd = perpVal + spotTotalUsd;
+		console.log(`[HL Balance] ${account.address} -> perp: $${perpVal.toFixed(2)}, spot: $${spotTotalUsd.toFixed(2)} (${spotBalances.map(s => `${s.coin}: ${s.total}`).join(', ')}), total: $${totalUsd.toFixed(2)}`);
 
-		return 0;
-	} catch {
-		return 0;
+		return { perp: perpVal, spot: spotBalances, spotTotalUsd, totalUsd };
+	} catch (err) {
+		console.error('[HL Balance error]', err instanceof Error ? err.message : err);
+		return empty;
 	}
 }
 
-export async function getLiveBalances(): Promise<LiveBalance> {
+export async function getLiveBalances(): Promise<LiveBalance & { hlDetail?: HlBalanceDetail }> {
 	const now = Date.now();
 	if (cachedLiveBalance && (now - liveBalanceFetchedAt) < LIVE_BALANCE_CACHE_TTL) {
 		return cachedLiveBalance;
 	}
 
-	// 병렬로 조회
-	const [hl, cb] = await Promise.all([fetchHlBalance(), fetchCbBalance()]);
+	const hlDetail = await fetchHlBalance();
+	const awalData = readAwalCache();
+	const cb = awalData.balance;
 
 	cachedLiveBalance = {
 		coinbase: cb,
-		hyperliquid: hl,
-		total: cb + hl,
+		hyperliquid: hlDetail.totalUsd,
+		total: cb + hlDetail.totalUsd,
 		timestamp: new Date().toISOString(),
+		hlDetail,
 	};
 	liveBalanceFetchedAt = now;
 
@@ -360,6 +421,13 @@ export async function getAvailableCoins(): Promise<TradableCoin[]> {
 		console.error('[Available Coins]', err instanceof Error ? err.message : err);
 		return cachedCoins;
 	}
+}
+
+// ─── Config Symbols ───
+
+export function getConfigSymbols(): string[] {
+	const config = getConfig() as { data_agent?: { symbols?: { symbol: string }[] } };
+	return config?.data_agent?.symbols?.map(s => s.symbol) || [];
 }
 
 // ─── API Error Count ───
@@ -459,8 +527,15 @@ export function validateSetup(): SetupCheck[] {
 	}
 
 	// 7. Coinbase Agentic Wallet (optional but recommended)
-	// We can't easily check awal auth status without running a command, so just note it
-	checks.push({ id: 'awal', label: 'Coinbase Agentic Wallet', status: 'warning', message: 'Run "bunx awal status" to verify wallet authentication', required: false });
+	// awal 인증 상태는 사이드카 캐시 파일에서 읽기
+	const awal = getAwalCache();
+	if (awal.status === 'ok') {
+		checks.push({ id: 'awal', label: 'Coinbase Agentic Wallet', status: 'ok', message: `Wallet authenticated${awal.address ? ` (${awal.address.slice(0, 8)}...)` : ''}`, required: false });
+	} else if (awal.status === 'error') {
+		checks.push({ id: 'awal', label: 'Coinbase Agentic Wallet', status: 'warning', message: 'Wallet not authenticated — run: bunx awal auth login <email>', required: false });
+	} else {
+		checks.push({ id: 'awal', label: 'Coinbase Agentic Wallet', status: 'warning', message: awal.error || 'Checking wallet status... (ensure awal sidecar is running)', required: false });
+	}
 
 	// 8. Check if mode is live but key looks like placeholder
 	const mode = getMode();
@@ -495,58 +570,6 @@ export interface WalletAddresses {
 	};
 }
 
-// Coinbase 주소 캐시 (서버 프로세스 수명 동안 유지)
-let cachedCoinbaseAddress: string | null = null;
-let coinbaseAddrFetchedAt = 0;
-const COINBASE_ADDR_CACHE_TTL = 300_000; // 5분
-
-async function fetchCoinbaseAddress(): Promise<string | null> {
-	const now = Date.now();
-	if (cachedCoinbaseAddress && (now - coinbaseAddrFetchedAt) < COINBASE_ADDR_CACHE_TTL) {
-		return cachedCoinbaseAddress;
-	}
-
-	try {
-		const proc = Bun.spawn(['bunx', 'awal', 'address', '--json'], {
-			stdout: 'pipe',
-			stderr: 'pipe',
-			env: { ...process.env },
-		});
-
-		const timer = setTimeout(() => proc.kill(), 10_000);
-		const exitCode = await proc.exited;
-		clearTimeout(timer);
-
-		if (exitCode !== 0) return cachedCoinbaseAddress;
-
-		const stdout = await new Response(proc.stdout).text();
-		const trimmed = stdout.trim();
-
-		// awal address returns a plain string like "0x..."
-		let addr = '';
-		try {
-			const parsed = JSON.parse(trimmed);
-			addr = typeof parsed === 'string' ? parsed : (parsed?.address ?? '');
-		} catch {
-			// 마지막 줄에서 0x 주소 추출
-			const lines = trimmed.split('\n');
-			for (const line of lines.reverse()) {
-				const match = line.trim().match(/^"?(0x[a-fA-F0-9]{40})"?$/);
-				if (match) { addr = match[1]; break; }
-			}
-		}
-
-		if (addr && addr.startsWith('0x') && addr.length === 42) {
-			cachedCoinbaseAddress = addr;
-			coinbaseAddrFetchedAt = now;
-		}
-
-		return cachedCoinbaseAddress;
-	} catch {
-		return cachedCoinbaseAddress;
-	}
-}
-
 export async function getWalletAddresses(): Promise<WalletAddresses> {
 	// Read HL address from .env
 	const envPath = resolve(PROJECT_ROOT, '.env');
@@ -563,8 +586,9 @@ export async function getWalletAddresses(): Promise<WalletAddresses> {
 
 	const validHl = hlAddr && hlAddr !== '0xyour_deposit_address' && hlAddr.length > 10;
 
-	// Coinbase 주소 자동 가져오기
-	const cbAddr = await fetchCoinbaseAddress();
+	// Coinbase 주소: 사이드카 캐시 파일에서 읽기
+	const awalData = readAwalCache();
+	const cbAddr = awalData.address;
 
 	return {
 		hyperliquid: validHl ? {

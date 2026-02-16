@@ -22,7 +22,8 @@ metadata: {"openclaw":{"requires":{"bins":["bun","npx"]}}}
 
 ## 사용 시나리오
 
-- 사용자가 Coinbase Agentic Wallet에 USDC를 입금하면, 봇이 자동으로 HyperLiquid에 배분
+- 사용자가 **HyperLiquid에 Arbitrum USDC를 직접 입금**하면 즉시 거래 가능
+- Coinbase Agentic Wallet에 USDC를 입금한 경우, 봇이 자동으로 HyperLiquid에 배분
 - trader 스킬에서 잔고 부족으로 자금 요청이 발생했을 때 자동 충전
 - 트레이딩 파이프라인에서 거래 전 자동 리밸런싱 (auto-rebalance)
 - cron 작업에서 주기적 잔고 확인 시
@@ -148,50 +149,69 @@ const result = await cb.sendUsdc({
 await cb.fundHyperliquid(500);
 ```
 
-### 3.4 네트워크 주의사항
+### 3.4 네트워크 구조
 
 ```
-Agentic Wallet (Base) ──send──→ HyperLiquid (Arbitrum)
-                                    ↑
-                          네트워크가 다름!
+사용자 ──Arbitrum USDC──→ HyperLiquid (Arbitrum)  ← 기본 입금 경로
+                              ↑
+Agentic Wallet (Base) ──send──┘  ← 자동 리밸런싱 경로 (Base→Arbitrum 크로스체인)
 ```
 
-- **Agentic Wallet**은 **Base** 네트워크에서 동작
-- **HyperLiquid**는 **Arbitrum** 네트워크에서 입출금
-- 코인베이스 → 하이퍼리퀴드: Base에서 전송 시 브릿지가 필요할 수 있음
+- **HyperLiquid**: **Arbitrum** 네트워크에서 입출금 (사용자 직접 입금 주소)
+- **Agentic Wallet**: **Base** 네트워크에서 동작 (자동 리밸런싱 보조 지갑)
+- 코인베이스 → 하이퍼리퀴드: Base에서 전송 시 크로스체인 브릿지가 필요할 수 있음
 - 하이퍼리퀴드 → 코인베이스: HL은 Arbitrum으로 출금. 같은 EVM 주소이므로 수신 가능하지만, `awal balance`에는 Base 잔고만 표시됨
 
 ---
 
-## 3.5 단일 입금 지점 (Coinbase Agentic Wallet)
+## 3.5 입금 방법
 
-사용자는 **Coinbase Agentic Wallet 주소**에만 USDC를 입금하면 된다. 봇이 자동으로 HyperLiquid 거래 계좌에 필요한 자금을 배분한다.
+### 기본 입금: HyperLiquid 직접 입금 (Arbitrum USDC)
+
+사용자는 **HyperLiquid 입금 주소**(`HYPERLIQUID_DEPOSIT_ADDRESS`)에 **Arbitrum 네트워크 USDC**를 입금한다. 이것이 거래에 사용되는 직접적인 자금이다.
 
 ```
-┌──────────────┐       자동 충전        ┌──────────────────┐
-│   사용자       │ ─── USDC 입금 ──→ │  Coinbase Agentic  │
-│              │                      │  Wallet (Base)     │
-└──────────────┘                      └────────┬───────────┘
-                                               │
-                                      auto-rebalance
-                                               │
-                                               ▼
-                                      ┌──────────────────┐
-                                      │  HyperLiquid     │
-                                      │  거래 계좌        │
-                                      │  (Arbitrum)       │
+┌──────────────┐    Arbitrum USDC     ┌──────────────────┐
+│   사용자       │ ─── 직접 입금 ──→  │  HyperLiquid     │
+│              │                      │  거래 계좌        │
+└──────────────┘                      │  (Arbitrum)       │
                                       └──────────────────┘
 ```
 
+- **네트워크**: Arbitrum
+- **토큰**: USDC
+- **입금 주소**: `.env`의 `HYPERLIQUID_DEPOSIT_ADDRESS`
+- **가스비**: Arbitrum ETH 소량 필요 (입금 트랜잭션용)
+- HyperLiquid 웹 UI에서 지갑 연결 후 입금하면 가장 간편
+
+### 보조 입금: Coinbase Agentic Wallet 경유 (선택)
+
+Coinbase Agentic Wallet에 USDC를 입금하면, 봇의 `auto-rebalance` 기능이 HyperLiquid로 자동 배분한다. 자동 리밸런싱이 필요한 경우에 활용한다.
+
+```
+┌──────────────┐   Base USDC    ┌──────────────────┐   auto-rebalance   ┌──────────────────┐
+│   사용자       │ ── 입금 ──→  │  Coinbase Agentic  │ ───── 전송 ────→  │  HyperLiquid     │
+│              │                │  Wallet (Base)     │                    │  거래 계좌        │
+└──────────────┘                └──────────────────┘                    │  (Arbitrum)       │
+                                                                        └──────────────────┘
+```
+
+- **네트워크**: Base
+- **토큰**: USDC
+- **입금 주소**: `bunx awal address`로 확인
+- **가스비**: 무료 (Agentic Wallet 자체 제공)
+- Base → Arbitrum 크로스체인 전송이 필요하므로 지연이 있을 수 있음
+
 ### 대시보드에서 입금 주소 표시
 
-- **메인 대시보드**: "내 입금 지갑" 카드에 Coinbase + HyperLiquid 주소 상시 표시 (복사 버튼 포함)
-- **사이드바**: 축약된 지갑 주소 상시 표시 (클릭 시 복사)
-- **지갑 페이지**: 상세 잔고 + 입금 안내
+- **메인 대시보드**: "내 입금 지갑" 카드에 HyperLiquid 입금 주소 (Arbitrum) + Coinbase 주소 (Base) 표시 (복사 버튼 포함)
+- **사이드바**: HyperLiquid 입금 주소 축약 표시 (클릭 시 복사)
+- **지갑 페이지**: 상세 잔고 + 네트워크별 입금 안내
 
-### Coinbase 주소 자동 조회
+### 주소 조회
 
-서버에서 `bunx awal address` 명령으로 Coinbase Agentic Wallet 주소를 자동 조회하며, 5분간 캐시한다. `awal` CLI가 설정되어 있지 않으면 수동 확인 안내를 표시한다.
+- **HyperLiquid 입금 주소**: `.env`의 `HYPERLIQUID_DEPOSIT_ADDRESS` (Arbitrum)
+- **Coinbase 주소**: 서버에서 `bunx awal address` 명령으로 자동 조회, 5분간 캐시. `awal` CLI가 설정되어 있지 않으면 수동 확인 안내 표시
 
 ---
 

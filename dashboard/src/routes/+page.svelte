@@ -11,11 +11,26 @@
 		maxLeverage: number;
 	}
 
+	interface HlSpotBalance {
+		coin: string;
+		total: string;
+		hold: string;
+		usdValue: number;
+	}
+
+	interface HlBalanceDetail {
+		perp: number;
+		spot: HlSpotBalance[];
+		spotTotalUsd: number;
+		totalUsd: number;
+	}
+
 	interface LiveBalance {
 		coinbase: number;
 		hyperliquid: number;
 		total: number;
 		timestamp: string;
+		hlDetail?: HlBalanceDetail;
 	}
 
 	let { data } = $props();
@@ -25,6 +40,7 @@
 	let walletAddresses: WalletAddresses = $state(data.walletAddresses as any);
 	let liveBalances: LiveBalance | null = $state(data.liveBalances as any ?? null);
 	let availableCoins: TradableCoin[] = $state(data.availableCoins as any ?? []);
+	let configSymbols: string[] = $state(data.configSymbols as any ?? []);
 	let chartData: Record<string, { time: string; binance: number; hyperliquid: number }[]> = $state({});
 	let lastPriceUpdate = $state(Date.now());
 	let copiedId = $state('');
@@ -36,9 +52,35 @@
 	let pipelineSteps: PipelineStep[] = $state([]);
 	let pipelineExpanded = $state(false);
 
+	// Runner state (continuous loop)
+	interface RunnerStatus {
+		state: 'running' | 'idle' | 'stopped' | 'error';
+		pid: number;
+		cycleCount: number;
+		successCount: number;
+		failCount: number;
+		lastCycle: {
+			startedAt: string;
+			completedAt: string;
+			success: boolean;
+			steps: Record<string, { success: boolean; durationMs: number; error?: string }>;
+			durationMs: number;
+		} | null;
+		nextCycleAt: string | null;
+		intervalSec: number;
+		mode: string;
+		updatedAt: string | null;
+		startedAt?: string;
+		stoppedAt?: string;
+		stopReason?: string;
+	}
+
+	let runnerStatus: RunnerStatus = $state({ state: 'stopped', pid: 0, cycleCount: 0, successCount: 0, failCount: 0, lastCycle: null, nextCycleAt: null, intervalSec: 0, mode: 'unknown', updatedAt: null });
+	let runnerLoading = $state(false);
+
 	// ─── Tiered refresh intervals ───
 	// Prices: every 3s (lightweight, DB-only)
-	// Dashboard KPI + Signals: every 10s (moderate)
+	// Dashboard KPI + Signals + Runner: every 10s (moderate)
 	// Charts: every 60s (heavier query)
 	$effect(() => {
 		// Fast: Live prices every 3s
@@ -51,7 +93,8 @@
 			} catch { /* ignore */ }
 		}, 3000);
 
-		// Medium: Dashboard + signals + balances every 10s
+		// Medium: Dashboard + signals + balances + runner every 10s
+		fetchRunnerStatus();
 		const dashInterval = setInterval(async () => {
 			try {
 				const [dRes, sRes, bRes] = await Promise.all([
@@ -64,6 +107,7 @@
 				signals = sData.signals;
 				liveBalances = await bRes.json();
 			} catch { /* ignore */ }
+			fetchRunnerStatus();
 		}, 10000);
 
 		// Slow: Charts + coins every 60s (heavier query)
@@ -77,6 +121,54 @@
 			clearInterval(chartInterval);
 		};
 	});
+
+	async function fetchRunnerStatus() {
+		try {
+			const res = await fetch('/api/bot/runner');
+			runnerStatus = await res.json();
+		} catch { /* ignore */ }
+	}
+
+	async function toggleRunner() {
+		if (runnerLoading) return;
+		runnerLoading = true;
+		try {
+			const isActive = runnerStatus.state === 'running' || runnerStatus.state === 'idle';
+			const res = await fetch('/api/bot/runner', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: isActive ? 'stop' : 'start' }),
+			});
+			const data = await res.json();
+			if (data.status) runnerStatus = data.status;
+			// 상태 갱신을 위해 잠시 후 재조회
+			setTimeout(fetchRunnerStatus, 2000);
+		} catch { /* ignore */ }
+		runnerLoading = false;
+	}
+
+	async function runnerRunNow() {
+		if (runnerStatus.state !== 'idle') return;
+		try {
+			await fetch('/api/bot/runner', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'run-now' }),
+			});
+			setTimeout(fetchRunnerStatus, 2000);
+		} catch { /* ignore */ }
+	}
+
+	function formatCountdown(targetIso: string | null): string {
+		if (!targetIso) return '';
+		const diff = Math.max(0, Math.floor((new Date(targetIso).getTime() - Date.now()) / 1000));
+		if (diff <= 0) return 'now';
+		const m = Math.floor(diff / 60);
+		const s = diff % 60;
+		return m > 0 ? `${m}분 ${s}초` : `${s}초`;
+	}
+
+	let runnerActive = $derived(runnerStatus.state === 'running' || runnerStatus.state === 'idle');
 
 	async function loadCoins() {
 		try {
@@ -203,13 +295,13 @@
 			</span>
 			<button
 				onclick={runFullPipeline}
-				disabled={pipelineRunning}
+				disabled={pipelineRunning || runnerActive}
 				class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer
 					{pipelineRunning
 						? 'bg-[var(--accent-blue)]/20 text-[var(--accent-blue)] border border-[var(--accent-blue)]/30'
 						: 'bg-[var(--accent-blue)] text-white hover:opacity-90'
 					}
-					disabled:cursor-not-allowed"
+					disabled:cursor-not-allowed disabled:opacity-50"
 			>
 				{#if pipelineRunning}
 					<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -222,10 +314,132 @@
 						<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
 						<path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 					</svg>
-					Run All
+					Run Once
 				{/if}
 			</button>
 		</div>
+	</div>
+
+	<!-- ═══════════ Continuous Runner Control ═══════════ -->
+	<div class="bg-[var(--bg-card)] border rounded-xl p-4
+		{runnerActive
+			? 'border-[var(--accent-green)]/40'
+			: runnerStatus.state === 'error'
+			? 'border-[var(--accent-red)]/40'
+			: 'border-[var(--border)]'}">
+		<div class="flex items-center justify-between">
+			<div class="flex items-center gap-4">
+				<!-- 상태 표시등 -->
+				<div class="flex items-center gap-2">
+					{#if runnerStatus.state === 'running'}
+						<span class="relative flex h-3 w-3">
+							<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent-green)] opacity-75"></span>
+							<span class="relative inline-flex rounded-full h-3 w-3 bg-[var(--accent-green)]"></span>
+						</span>
+						<span class="text-sm font-semibold text-[var(--accent-green)]">실행 중</span>
+					{:else if runnerStatus.state === 'idle'}
+						<span class="relative flex h-3 w-3">
+							<span class="animate-pulse absolute inline-flex h-full w-full rounded-full bg-[var(--accent-blue)] opacity-50"></span>
+							<span class="relative inline-flex rounded-full h-3 w-3 bg-[var(--accent-blue)]"></span>
+						</span>
+						<span class="text-sm font-semibold text-[var(--accent-blue)]">대기 중</span>
+					{:else if runnerStatus.state === 'error'}
+						<span class="w-3 h-3 rounded-full bg-[var(--accent-red)]"></span>
+						<span class="text-sm font-semibold text-[var(--accent-red)]">오류 정지</span>
+					{:else}
+						<span class="w-3 h-3 rounded-full bg-[var(--text-secondary)] opacity-50"></span>
+						<span class="text-sm font-semibold text-[var(--text-secondary)]">정지됨</span>
+					{/if}
+				</div>
+
+				<!-- 통계 -->
+				{#if runnerActive || runnerStatus.cycleCount > 0}
+					<div class="flex items-center gap-3 text-xs text-[var(--text-secondary)]">
+						<span>사이클: <strong class="text-white">{runnerStatus.cycleCount}</strong></span>
+						<span>성공: <strong class="text-[var(--accent-green)]">{runnerStatus.successCount}</strong></span>
+						{#if runnerStatus.failCount > 0}
+							<span>실패: <strong class="text-[var(--accent-red)]">{runnerStatus.failCount}</strong></span>
+						{/if}
+						{#if runnerStatus.intervalSec > 0}
+							<span>간격: {runnerStatus.intervalSec}초</span>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- 다음 실행 카운트다운 -->
+				{#if runnerStatus.state === 'idle' && runnerStatus.nextCycleAt}
+					<span class="text-xs px-2 py-0.5 rounded bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]">
+						다음: {formatCountdown(runnerStatus.nextCycleAt)}
+					</span>
+					<button
+						onclick={runnerRunNow}
+						class="text-xs px-2 py-0.5 rounded bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)] hover:bg-[var(--accent-yellow)]/25 cursor-pointer"
+					>
+						즉시 실행
+					</button>
+				{/if}
+			</div>
+
+			<!-- 시작/정지 버튼 -->
+			<button
+				onclick={toggleRunner}
+				disabled={runnerLoading}
+				class="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+					{runnerActive
+						? 'bg-[var(--accent-red)] text-white hover:opacity-90'
+						: 'bg-[var(--accent-green)] text-white hover:opacity-90'
+					}"
+			>
+				{#if runnerLoading}
+					<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+					</svg>
+				{:else if runnerActive}
+					<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+					자동매매 정지
+				{:else}
+					<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+					자동매매 시작
+				{/if}
+			</button>
+		</div>
+
+		<!-- 마지막 사이클 결과 (있을 때) -->
+		{#if runnerStatus.lastCycle}
+			<div class="mt-3 pt-3 border-t border-[var(--border)]">
+				<div class="flex items-center gap-2 text-xs text-[var(--text-secondary)] mb-2">
+					<span>마지막 사이클:</span>
+					<span class="{runnerStatus.lastCycle.success ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'} font-medium">
+						{runnerStatus.lastCycle.success ? '성공' : '실패'}
+					</span>
+					<span>({(runnerStatus.lastCycle.durationMs / 1000).toFixed(1)}초)</span>
+					<span>{timeAgo(runnerStatus.lastCycle.completedAt)}</span>
+				</div>
+				<div class="flex flex-wrap gap-1.5">
+					{#each Object.entries(runnerStatus.lastCycle.steps) as [stepId, step]}
+						<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium
+							{step.success
+								? 'bg-[var(--accent-green)]/10 text-[var(--accent-green)]'
+								: 'bg-[var(--accent-red)]/10 text-[var(--accent-red)]'}"
+							title={step.error || `${step.durationMs}ms`}
+						>
+							{#if step.success}
+								<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+							{:else}
+								<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+							{/if}
+							{stepId}
+						</span>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- 오류 사유 -->
+		{#if runnerStatus.state === 'error' && runnerStatus.stopReason}
+			<p class="mt-2 text-xs text-[var(--accent-red)]">정지 사유: {runnerStatus.stopReason}</p>
+		{/if}
 	</div>
 
 	<!-- Pipeline Progress -->
@@ -290,49 +504,33 @@
 		</div>
 	{/if}
 
-	<!-- ═══════════ Live Prices + Spread (real-time, 3s refresh) ═══════════ -->
+	<!-- ═══════════ Live Prices + Spread (compact, 3s refresh) ═══════════ -->
 	{#if livePrices.length > 0}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-			<div class="flex items-center justify-between mb-3">
-				<div class="flex items-center gap-2">
-					<span class="w-2 h-2 rounded-full bg-[var(--accent-green)] animate-pulse"></span>
-					<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Live Prices</h2>
+		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-3 py-2">
+			<div class="flex items-center justify-between mb-1.5">
+				<div class="flex items-center gap-1.5">
+					<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></span>
+					<h2 class="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Live Prices</h2>
 				</div>
-				<span class="text-[10px] text-[var(--text-secondary)]">
-					{livePrices[0]?.timestamp ? timeAgo(livePrices[0].timestamp) : ''} &middot; 3s refresh
+				<span class="text-[9px] text-[var(--text-secondary)]">
+					{livePrices[0]?.timestamp ? timeAgo(livePrices[0].timestamp) : ''} &middot; 3s
 				</span>
 			</div>
-			<div class="grid grid-cols-1 md:grid-cols-{livePrices.length} gap-3">
+			<div class="flex flex-wrap gap-2">
 				{#each livePrices as p}
-					<div class="bg-[var(--bg-secondary)] rounded-lg p-4">
-						<div class="flex items-center justify-between mb-3">
-							<span class="text-lg font-bold text-white">{p.symbol}</span>
-							<span class="text-xs px-2 py-0.5 rounded font-medium
-								{Math.abs(p.spread_pct) > 0.1
-									? 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'
-									: Math.abs(p.spread_pct) > 0.05
-									? 'bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)]'
-									: 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]'
-								}">
-								Spread: {p.spread_pct.toFixed(4)}%
-							</span>
-						</div>
-						<div class="grid grid-cols-2 gap-3">
-							<div>
-								<p class="text-[10px] text-[var(--accent-yellow)] font-medium mb-0.5">Binance</p>
-								<p class="text-xl font-mono font-bold text-white">${formatPrice(p.binance_price)}</p>
-								<p class="text-xs font-mono {p.binance_change_pct >= 0 ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'}">
-									{p.binance_change_pct >= 0 ? '+' : ''}{p.binance_change_pct.toFixed(4)}%
-								</p>
-							</div>
-							<div>
-								<p class="text-[10px] text-[var(--accent-purple)] font-medium mb-0.5">HyperLiquid</p>
-								<p class="text-xl font-mono font-bold text-white">${formatPrice(p.hl_price)}</p>
-								<p class="text-xs font-mono {p.hl_change_pct >= 0 ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'}">
-									{p.hl_change_pct >= 0 ? '+' : ''}{p.hl_change_pct.toFixed(4)}%
-								</p>
-							</div>
-						</div>
+					<div class="flex items-center gap-2 bg-[var(--bg-secondary)] rounded-md px-2.5 py-1.5 min-w-0">
+						<span class="text-xs font-bold text-white whitespace-nowrap">{p.symbol}</span>
+						<span class="text-[10px] font-mono text-[var(--accent-yellow)]">${formatPrice(p.binance_price)}</span>
+						<span class="text-[10px] font-mono text-[var(--accent-purple)]">${formatPrice(p.hl_price)}</span>
+						<span class="text-[9px] px-1 py-px rounded font-medium whitespace-nowrap
+							{Math.abs(p.spread_pct) > 0.1
+								? 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'
+								: Math.abs(p.spread_pct) > 0.05
+								? 'bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)]'
+								: 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]'
+							}">
+							{p.spread_pct >= 0 ? '+' : ''}{p.spread_pct.toFixed(3)}%
+						</span>
 					</div>
 				{/each}
 			</div>
@@ -375,6 +573,25 @@
 					<p class="text-[10px] text-[var(--text-secondary)]">Combined</p>
 				</div>
 			</div>
+			{#if liveBalances?.hlDetail && (liveBalances.hlDetail.spot.length > 0 || liveBalances.hlDetail.perp > 0)}
+				<div class="mt-3 border-t border-[var(--border)] pt-3">
+					<p class="text-[10px] text-[var(--text-secondary)] font-medium mb-2 uppercase tracking-wider">HyperLiquid 상세</p>
+					<div class="space-y-1">
+						{#if liveBalances.hlDetail.perp > 0}
+							<div class="flex justify-between text-xs">
+								<span class="text-[var(--text-secondary)]">Perp Margin</span>
+								<span class="text-[var(--accent-purple)] font-medium">${liveBalances.hlDetail.perp.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+							</div>
+						{/if}
+						{#each liveBalances.hlDetail.spot as s}
+							<div class="flex justify-between text-xs">
+								<span class="text-[var(--text-secondary)]">{s.coin} <span class="opacity-50">{s.total}</span></span>
+								<span class="text-[var(--accent-purple)] font-medium">${s.usdValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
 			{#if liveBalances}
 				<p class="text-[10px] text-[var(--text-secondary)] mt-2 text-right">
 					Updated: {new Date(liveBalances.timestamp).toLocaleTimeString('ko-KR')}
@@ -521,7 +738,7 @@
 
 	<!-- Available Trading Coins -->
 	{#if availableCoins.length > 0}
-		{@const configSymbols = ['BTC', 'ETH']}
+		{@const activeSymbols = configSymbols}
 		{@const displayCoins = showAllCoins ? availableCoins : availableCoins.slice(0, 20)}
 		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
 			<div class="flex items-center justify-between mb-3">
@@ -535,7 +752,7 @@
 			</div>
 			<div class="flex flex-wrap gap-1.5">
 				{#each displayCoins as coin}
-					{@const isActive = configSymbols.includes(coin.name)}
+					{@const isActive = activeSymbols.includes(coin.name)}
 					<span class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors
 						{isActive
 							? 'bg-[var(--accent-green)]/15 text-[var(--accent-green)] border border-[var(--accent-green)]/30'
