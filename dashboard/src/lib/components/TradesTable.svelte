@@ -6,9 +6,10 @@
 		compact?: boolean;
 		mini?: boolean;
 		livePrices?: LivePrice[];
+		onSymbolClick?: (symbol: string) => void;
 	}
 
-	let { trades, compact = false, mini = false, livePrices = [] }: Props = $props();
+	let { trades, compact = false, mini = false, livePrices = [], onSymbolClick }: Props = $props();
 
 	function formatTime(ts: string | undefined) {
 		if (!ts) return '-';
@@ -136,7 +137,13 @@
 			{#each trades as trade}
 				<tr class="border-b border-[var(--border)]/50 hover:bg-[var(--bg-hover)] transition-colors">
 					<td class="{cellPy} {cellPx} text-[var(--text-secondary)] whitespace-nowrap">{formatTime(trade.timestamp_open)}</td>
-					<td class="{cellPy} {cellPx} font-medium">{trade.symbol}</td>
+					<td class="{cellPy} {cellPx} font-medium">
+						{#if onSymbolClick}
+							<button onclick={() => onSymbolClick?.(trade.symbol)} class="hover:text-[var(--accent-blue)] hover:underline cursor-pointer transition-colors">{trade.symbol}</button>
+						{:else}
+							{trade.symbol}
+						{/if}
+					</td>
 					<td class="{cellPy} {cellPx}">
 						{#if mini}
 							<span class="{trade.side === 'LONG' ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'} font-medium">
@@ -165,8 +172,8 @@
 						{/if}
 					</td>
 					<td class="{cellPy} {cellPx}">
-						{#if dist}
-							<div class="flex flex-col items-center gap-0.5 min-w-[60px]" title="SL: -{dist.slPct.toFixed(1)}% / TP: +{dist.tpPct.toFixed(1)}%">
+						{#if dist && trade.stop_loss && trade.take_profit}
+							<div class="flex flex-col items-center gap-0.5 min-w-[70px]" title="SL: ${formatPrice(trade.stop_loss)} (-{dist.slPct.toFixed(1)}%) / TP: ${formatPrice(trade.take_profit)} (+{dist.tpPct.toFixed(1)}%)">
 								<div class="w-full h-1.5 rounded-full bg-[var(--bg-secondary)] overflow-hidden relative">
 									<div class="absolute left-0 top-0 h-full bg-gradient-to-r from-[var(--accent-red)] via-[var(--accent-yellow)] to-[var(--accent-green)] rounded-full opacity-30 w-full"></div>
 									<div
@@ -175,14 +182,22 @@
 									></div>
 								</div>
 								{#if mini}
-									<div class="flex justify-between w-full text-[8px] font-mono leading-none">
-										<span class="text-[var(--accent-red)]">{dist.slPct.toFixed(1)}%</span>
-										<span class="text-[var(--accent-green)]">{dist.tpPct.toFixed(1)}%</span>
+									<div class="flex justify-between w-full text-[7px] font-mono leading-none">
+										<span class="text-[var(--accent-red)]">${formatPrice(trade.stop_loss)}</span>
+										<span class="text-[var(--accent-green)]">${formatPrice(trade.take_profit)}</span>
+									</div>
+									<div class="flex justify-between w-full text-[7px] font-mono leading-none opacity-60">
+										<span class="text-[var(--accent-red)]">-{dist.slPct.toFixed(1)}%</span>
+										<span class="text-[var(--accent-green)]">+{dist.tpPct.toFixed(1)}%</span>
 									</div>
 								{:else}
 									<div class="flex justify-between w-full text-[9px] font-mono leading-none">
-										<span class="text-[var(--accent-red)]">SL {dist.slPct.toFixed(1)}%</span>
-										<span class="text-[var(--accent-green)]">TP {dist.tpPct.toFixed(1)}%</span>
+										<span class="text-[var(--accent-red)]">${formatPrice(trade.stop_loss)}</span>
+										<span class="text-[var(--accent-green)]">${formatPrice(trade.take_profit)}</span>
+									</div>
+									<div class="flex justify-between w-full text-[8px] font-mono leading-none opacity-60">
+										<span class="text-[var(--accent-red)]">SL -{dist.slPct.toFixed(1)}%</span>
+										<span class="text-[var(--accent-green)]">TP +{dist.tpPct.toFixed(1)}%</span>
 									</div>
 								{/if}
 							</div>

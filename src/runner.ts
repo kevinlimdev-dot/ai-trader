@@ -205,78 +205,17 @@ async function runStep(step: typeof SCRIPTS[0], timeoutMs = 60_000): Promise<Ste
 
 async function runCycleViaOpenClaw(): Promise<CycleResult> {
 	const cycleStart = Date.now();
-	const CD = `cd ${PROJECT_ROOT}`;
-	const prompt = `너는 자율적인 AI 투자 판단자야. 아래 7단계를 순서대로 실행해.
-너의 핵심 역할은 4단계에서 기술적 분석 + 시장 심리 데이터를 종합하여 독립적으로 투자 결정을 내리는 것이야.
-
-## 1단계: 가격 수집
-${CD} && bun run skills/data-collector/scripts/collect-prices.ts
-
-## 2단계: 기술적 분석
-${CD} && bun run skills/analyzer/scripts/analyze.ts
-
-## 3단계: 시장 심리 수집
-${CD} && bun run skills/ai-decision/scripts/collect-sentiment.ts
-
-이 스크립트는 각 코인별로 수집한다:
-- 바이낸스: 오픈인터레스트(OI), 롱/숏 비율, 탑 트레이더 포지션, 테이커 매수/매도 비율, 펀딩비 히스토리
-- 하이퍼리퀴드: 펀딩비, OI, 프리미엄, 24시간 거래량
-
-## 4단계: ★ AI 자율 투자 판단 (핵심) ★
-먼저 종합 요약을 확인해:
-${CD} && bun run skills/ai-decision/scripts/summarize.ts
-
-이 JSON에는 기술적 지표(spread, RSI, MACD, BB, MA)와 시장 심리(market_sentiment) 데이터가 모두 포함되어 있어.
-
-### 판단 시 반드시 고려할 요소:
-
-**기술적 분석**
-- composite_score와 개별 지표의 방향 일치 여부
-- RSI 과매수/과매도 영역 (극단치에서 반전 가능성)
-- MACD 크로스 (golden/dead cross)
-- 볼린저 밴드 위치 (상단/하단 접촉 시)
-
-**시장 심리 (contrarian + momentum)**
-- crowd_bias: 군중이 한 방향에 치우쳐 있으면 역발상 진입 고려 (extreme_long → 숏 유리, extreme_short → 롱 유리)
-- smart_money: 탑 트레이더(상위 20%) 방향을 따라가는 것이 유리
-- taker_pressure: 공격적 매수/매도 비율로 단기 모멘텀 판단
-- funding_rate: 극단적 펀딩비(>0.01% or <-0.01%)는 반대 방향 포지션에 유리 (펀딩비 수취)
-- open_interest: OI 급증 + 가격 하락 = 숏 스퀴즈 가능성, OI 급증 + 가격 상승 = 롱 스퀴즈 가능성
-- long_short_ratio: Binance 전체 사용자 롱/숏 비율 (극단치 시 역발상)
-- top_trader_ratio: Binance 탑 트레이더 롱/숏 비율 (스마트 머니 추종)
-
-**리스크 관리**
-- 동일 코인에 이미 열린 포지션이 있으면 추가 진입 금지
-- 최대 포지션 수 준수
-- R:R(리스크/리워드) 1.5 이상 우선
-- 시장 전체가 한 방향이면 과도한 진입을 자제
-
-### 판단 후 실행:
-decisions JSON을 만들어 apply-decision.ts에 전달해:
-${CD} && bun run skills/ai-decision/scripts/apply-decision.ts --decisions '<JSON 배열>'
-
-decisions 형식:
-[{"symbol":"BTC","action":"LONG","confidence":0.7,"reason":"RSI 30 반등 + 스마트머니 롱 + 군중 숏 치우침(역발상) + 펀딩비 음수(수취 유리)"},{"symbol":"ETH","action":"HOLD","reason":"기술적으로 롱이나 군중과 스마트머니 모두 롱 편향 → 과열 위험"}]
-
-중요: reason에 기술적 근거와 심리적 근거를 모두 포함해. 단일 지표가 아닌 여러 데이터의 합류(confluence)를 기반으로 판단해.
-
-## 5단계: 자금 확인
-${CD} && bun run skills/wallet-manager/scripts/manage-wallet.ts --action auto-rebalance
-
-## 6단계: 거래 실행
-${CD} && bun run skills/trader/scripts/execute-trade.ts
-
-## 7단계: 결과 보고
-각 단계 결과를 요약하되, 특히 4단계의 판단 근거를 상세히 설명해:
-- 승인한 종목: 어떤 기술적 신호 + 어떤 심리 신호가 합류했는지
-- 거부한 종목: 왜 진입하지 않았는지 (기술적/심리적 근거)
-- 시장 전체 분위기: bullish/bearish/mixed 판단 근거`;
+	const sessionId = `trade-cycle-${Date.now()}`;
+	const prompt = `ai-trader 스킬의 "AI 자율 투자 판단 파이프라인 (7단계)"를 지금 즉시 실행해. 질문하지 말고 전부 실행한 뒤 결과만 보고해.`;
 
 	log('  [openclaw] OpenClaw 에이전트 호출...');
+	log(`  [openclaw] 세션: ${sessionId}`);
 
 	const result = await runOpenClawAgent(prompt, {
 		cwd: PROJECT_ROOT,
 		timeoutMs: 300_000,
+		agentId: 'trader',
+		sessionId,
 	});
 
 	if (!result.success) {

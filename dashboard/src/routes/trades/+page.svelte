@@ -4,13 +4,12 @@
 	import { page } from '$app/state';
 
 	let { data } = $props();
-	let tradesData: TradesResponse = $state(data.tradesData as any);
-	let filters = $state(data.filters);
+	let tradesData: TradesResponse = $derived(data.tradesData as any);
 
 	let selectedTrade: TradeRow | null = $state(null);
-	let filterSymbol = $state(filters.symbol || '');
-	let filterSide = $state(filters.side || '');
-	let filterStatus = $state(filters.status || '');
+	let filterSymbol = $state(data.filters.symbol || '');
+	let filterSide = $state(data.filters.side || '');
+	let filterStatus = $state(data.filters.status || '');
 
 	function applyFilters() {
 		const params = new URLSearchParams();

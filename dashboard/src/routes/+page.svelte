@@ -58,6 +58,7 @@
 	let configSymbols: string[] = $state(data.configSymbols as any ?? []);
 	let hlPositions: HlLivePosition[] = $state(data.hlPositions as any ?? []);
 	let chartData: Record<string, { time: string; binance: number; hyperliquid: number }[]> = $state({});
+	let chartSymbol = $state('BTC');
 	let lastPriceUpdate = $state(Date.now());
 	let copiedId = $state('');
 	let showAllCoins = $state(false);
@@ -251,6 +252,23 @@
 	let signalExpanded: string | null = $state(null);
 	let runnerActive = $derived(runnerStatus.state === 'running' || runnerStatus.state === 'idle');
 
+	// AI Adjustments state
+	interface AiAdjustment {
+		timestamp: string;
+		reason: string;
+		adjustments: Record<string, { from: number; to: number }>;
+		market_condition: string;
+		action_taken: string;
+	}
+	let aiAdjustment: AiAdjustment | null = $state(null);
+
+	async function fetchAiAdjustments() {
+		try {
+			const res = await fetch('/api/ai-adjustments');
+			if (res.ok) aiAdjustment = await res.json();
+		} catch {}
+	}
+
 	// 1초 tick — timeAgo를 실시간 갱신
 	let tick = $state(0);
 
@@ -323,6 +341,7 @@
 			fetchRunnerStatus();
 			fetchRunnerLog();
 			fetchMonitorStatus();
+			fetchAiAdjustments();
 		}, 10000);
 
 		// Slow: Charts + coins every 60s (heavier query)
@@ -432,16 +451,20 @@
 		} catch { /* ignore */ }
 	}
 
-	async function loadChartData() {
+	async function loadChartData(symbol?: string) {
+		const sym = symbol || chartSymbol;
 		try {
-			const [btcRes, ethRes] = await Promise.all([
-				fetch('/api/snapshots?symbol=BTC&limit=100'),
-				fetch('/api/snapshots?symbol=ETH&limit=100'),
-			]);
-			const btc = await btcRes.json();
-			const eth = await ethRes.json();
-			chartData = { BTC: btc.data, ETH: eth.data };
+			const res = await fetch(`/api/snapshots?symbol=${sym}&limit=100`);
+			const json = await res.json();
+			chartData = { ...chartData, [sym]: json.data };
 		} catch { /* ignore */ }
+	}
+
+	function selectChartSymbol(symbol: string) {
+		chartSymbol = symbol;
+		if (!chartData[symbol] || chartData[symbol].length === 0) {
+			loadChartData(symbol);
+		}
 	}
 
 	async function runFullPipeline() {
@@ -805,6 +828,38 @@
 		{/if}
 	</div>
 
+	<!-- AI 파라미터 조정 알림 -->
+	{#if aiAdjustment}
+		<div class="bg-[var(--bg-card)] border border-[var(--accent-yellow)]/30 rounded-xl p-3">
+			<div class="flex items-center justify-between mb-2">
+				<div class="flex items-center gap-2">
+					<svg class="w-4 h-4 text-[var(--accent-yellow)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+						<path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+					</svg>
+					<span class="text-[11px] font-bold text-[var(--accent-yellow)] uppercase">AI 파라미터 조정</span>
+					{#if aiAdjustment.market_condition}
+						<span class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-secondary)] font-medium">{aiAdjustment.market_condition}</span>
+					{/if}
+				</div>
+				<span class="text-[9px] text-[var(--text-secondary)]">{aiAdjustment.timestamp ? timeAgo(aiAdjustment.timestamp) : ''}</span>
+			</div>
+			<p class="text-[10px] text-[var(--text-secondary)] mb-2">{aiAdjustment.reason}</p>
+			{#if aiAdjustment.adjustments}
+				<div class="flex flex-wrap gap-2">
+					{#each Object.entries(aiAdjustment.adjustments) as [key, val]}
+						<div class="flex items-center gap-1 text-[10px] bg-[var(--bg-secondary)] rounded px-2 py-1">
+							<span class="text-[var(--text-secondary)]">{key}</span>
+							<span class="font-mono text-[var(--accent-red)] line-through">{val.from}</span>
+							<span class="text-[var(--text-secondary)]">→</span>
+							<span class="font-mono text-[var(--accent-green)] font-bold">{val.to}</span>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
+
 	<!-- Open Positions (HyperLiquid Live) -->
 	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
 		<div class="flex items-center justify-between mb-3">
@@ -955,40 +1010,41 @@
 		</div>
 	{/if}
 
-	<!-- ═══════════ Live Prices + Recent Trades (side by side) ═══════════ -->
+	<!-- ═══════════ Chart + Recent Trades (side by side) ═══════════ -->
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-		<!-- Live Prices -->
-		{#if livePrices.length > 0}
-			<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-3 py-2">
-				<div class="flex items-center justify-between mb-1">
-					<div class="flex items-center gap-1">
-						<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></span>
-						<h2 class="text-[9px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Live Prices</h2>
+		<!-- Price Chart (선택된 코인) -->
+		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3">
+			<div class="flex items-center justify-between mb-2">
+				<div class="flex items-center gap-2">
+					<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">{chartSymbol} Chart</h2>
+					<div class="flex items-center gap-4 text-[10px]">
+						<span class="flex items-center gap-1"><span class="w-2.5 h-0.5 bg-[#eab308] inline-block"></span> Binance</span>
+						<span class="flex items-center gap-1"><span class="w-2.5 h-0.5 bg-[#a855f7] inline-block"></span> HL</span>
 					</div>
-					<span class="text-[8px] text-[var(--text-secondary)]">
-						{livePrices[0]?.timestamp ? timeAgo(livePrices[0].timestamp) : ''} &middot; 3s
-					</span>
 				</div>
-				<div class="flex flex-wrap gap-1">
-					{#each livePrices as p}
-						<div class="flex items-center gap-1 bg-[var(--bg-secondary)] rounded px-1.5 py-0.5 min-w-0">
-							<span class="text-[10px] font-bold text-white whitespace-nowrap">{p.symbol}</span>
-							<span class="text-[9px] font-mono text-[var(--accent-yellow)]">${formatPrice(p.binance_price)}</span>
-							<span class="text-[9px] font-mono text-[var(--accent-purple)]">${formatPrice(p.hl_price)}</span>
-							<span class="text-[8px] px-0.5 rounded font-medium whitespace-nowrap
-								{Math.abs(p.spread_pct) > 0.1
-									? 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'
-									: Math.abs(p.spread_pct) > 0.05
-									? 'bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)]'
-									: 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]'
-								}">
-								{p.spread_pct >= 0 ? '+' : ''}{p.spread_pct.toFixed(3)}%
-							</span>
-						</div>
+				<div class="flex items-center gap-1">
+					{#each ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'] as sym}
+						<button
+							onclick={() => selectChartSymbol(sym)}
+							class="text-[9px] px-1.5 py-0.5 rounded cursor-pointer transition-all
+								{chartSymbol === sym
+									? 'bg-[var(--accent-blue)] text-white font-bold'
+									: 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-white'
+								}"
+						>{sym}</button>
 					{/each}
 				</div>
 			</div>
-		{/if}
+			{#if chartData[chartSymbol] && chartData[chartSymbol].length > 0}
+				{#key chartSymbol}
+					<PriceChart symbol={chartSymbol} data={chartData[chartSymbol]} />
+				{/key}
+			{:else}
+				<div class="flex items-center justify-center h-[280px] text-[var(--text-secondary)] text-xs">
+					<p>차트 데이터 로딩 중...</p>
+				</div>
+			{/if}
+		</div>
 
 		<!-- Recent Trades -->
 		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-3 py-2">
@@ -996,7 +1052,7 @@
 				<h2 class="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Recent Trades</h2>
 				<a href="/trades" class="text-[10px] text-[var(--accent-blue)] hover:underline">View all</a>
 			</div>
-			<TradesTable trades={dashboard.recentTrades} mini {livePrices} />
+			<TradesTable trades={dashboard.recentTrades} mini {livePrices} onSymbolClick={selectChartSymbol} />
 		</div>
 	</div>
 
@@ -1379,16 +1435,6 @@
 	</div>
 
 	</div><!-- /grid AI분석 + 로그 -->
-
-	<!-- Price Charts (60s refresh) -->
-	{#if chartData.BTC && chartData.BTC.length > 0}
-		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-			<PriceChart symbol="BTC" data={chartData.BTC} />
-			{#if chartData.ETH && chartData.ETH.length > 0}
-				<PriceChart symbol="ETH" data={chartData.ETH} />
-			{/if}
-		</div>
-	{/if}
 
 	<!-- Available Trading Coins -->
 	{#if availableCoins.length > 0}

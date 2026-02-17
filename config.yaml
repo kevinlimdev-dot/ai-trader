@@ -165,8 +165,8 @@ trade_agent:
     min_signal_confidence: 0.35
   trailing_stop:
     enabled: true
-    activation_pct: 2.0
-    trail_pct: 1.0
+    activation_pct: 2
+    trail_pct: 1
   safety:
     kill_switch_file: data/KILL_SWITCH
     max_consecutive_api_errors: 5

@@ -50,7 +50,7 @@ export function getDashboardData(hlPositions?: { coin: string; side: string; unr
 	const wins = closedToday.filter((t: any) => t.pnl > 0).length;
 	const winRate = closedToday.length > 0 ? (wins / closedToday.length) * 100 : 0;
 
-	const recentTrades = d.query(`SELECT * FROM trades ORDER BY id DESC LIMIT 40`).all() as any[];
+	const recentTrades = d.query(`SELECT * FROM trades ORDER BY id DESC LIMIT 25`).all() as any[];
 
 	// HL 실시간 데이터로 open 거래 PnL 보강
 	if (hlPositions && hlPositions.length > 0) {

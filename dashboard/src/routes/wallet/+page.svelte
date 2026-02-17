@@ -8,34 +8,68 @@
 	let result: BotResult | null = $state(null);
 	let copiedId = $state('');
 
-	// Poll
+	interface HlSpotBalance { coin: string; total: string; hold: string; usdValue: number; }
+	interface HlBalanceDetail { perp: number; spot: HlSpotBalance[]; spotTotalUsd: number; totalUsd: number; }
+	interface LiveBalance { coinbase: number; hyperliquid: number; total: number; timestamp: string; hlDetail?: HlBalanceDetail; }
+	let liveBalances: LiveBalance | null = $state(null);
+
+	interface DepositInfo { status: string; amount?: string; usdcBalance?: string; txHash?: string; arbiscan?: string; error?: string; }
+	let depositLoading = $state(false);
+	let depositResult: DepositInfo | null = $state(null);
+	let depositChecking = $state(false);
+	let arbUsdcBalance: string | null = $state(null);
+
 	$effect(() => {
+		fetchLive();
 		const interval = setInterval(async () => {
 			try {
-				const res = await fetch('/api/wallet');
-				wallet = await res.json();
-			} catch { /* ignore */ }
+				const [wRes, bRes] = await Promise.all([fetch('/api/wallet'), fetch('/api/balances')]);
+				wallet = await wRes.json();
+				if (bRes.ok) liveBalances = await bRes.json();
+			} catch {}
 		}, 10000);
 		return () => clearInterval(interval);
 	});
+
+	async function fetchLive() {
+		try { liveBalances = await (await fetch('/api/balances')).json(); } catch {}
+	}
 
 	async function refreshBalance() {
 		refreshing = true;
 		result = null;
 		try {
-			const res = await fetch('/api/bot/run', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ script: 'balance' }),
-			});
+			const res = await fetch('/api/bot/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ script: 'balance' }) });
 			result = await res.json();
-			const wRes = await fetch('/api/wallet');
-			wallet = await wRes.json();
-		} catch (e) {
-			result = { success: false, error: String(e) };
-		} finally {
-			refreshing = false;
-		}
+			fetchLive();
+		} catch (e) { result = { success: false, error: String(e) }; }
+		finally { refreshing = false; }
+	}
+
+	async function checkArbBalance() {
+		depositChecking = true;
+		try {
+			const res = await fetch('/api/bot/deposit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'check' }) });
+			const d = await res.json();
+			if (d.status === 'dry_run') arbUsdcBalance = d.usdcBalance || d.amount || null;
+		} catch {}
+		depositChecking = false;
+	}
+
+	async function executeDeposit() {
+		if (!confirm('Arbitrum USDC를 HyperLiquid에 입금합니다. 진행하시겠습니까?')) return;
+		depositLoading = true;
+		depositResult = null;
+		try {
+			const res = await fetch('/api/bot/deposit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'deposit' }) });
+			depositResult = await res.json();
+			if (depositResult?.status === 'success') {
+				setTimeout(fetchLive, 5000);
+				setTimeout(fetchLive, 30000);
+				arbUsdcBalance = null;
+			}
+		} catch (err) { depositResult = { status: 'error', error: err instanceof Error ? err.message : String(err) }; }
+		depositLoading = false;
 	}
 
 	function formatTime(ts: string | undefined) {
@@ -44,149 +78,142 @@
 	}
 
 	async function copyAddress(addr: string, id: string) {
-		try {
-			await navigator.clipboard.writeText(addr);
-			copiedId = id;
-			setTimeout(() => { copiedId = ''; }, 2500);
-		} catch { /* ignore */ }
+		try { await navigator.clipboard.writeText(addr); copiedId = id; setTimeout(() => { copiedId = ''; }, 2500); } catch {}
 	}
 </script>
 
 <svelte:head><title>AI Trader - Wallet</title></svelte:head>
 
-<div class="space-y-6">
+<div class="space-y-4">
 	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold">Wallet</h1>
-		<button
-			onclick={refreshBalance}
-			disabled={refreshing}
-			class="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-		>
-			{refreshing ? 'Refreshing...' : 'Refresh Balance'}
+		<h1 class="text-xl font-bold">Wallet</h1>
+		<button onclick={refreshBalance} disabled={refreshing} class="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer">
+			{refreshing ? '갱신 중...' : '잔고 갱신'}
 		</button>
 	</div>
 
 	{#if result}
 		<div class="p-3 rounded-lg text-sm {result.success ? 'bg-[var(--accent-green)]/10 border border-[var(--accent-green)]/30 text-[var(--accent-green)]' : 'bg-[var(--accent-red)]/10 border border-[var(--accent-red)]/30 text-[var(--accent-red)]'}">
-			{result.success ? 'Balance refreshed.' : `Error: ${result.error}`}
+			{result.success ? '잔고 갱신 완료.' : `오류: ${result.error}`}
 		</div>
 	{/if}
 
-	<!-- Single Deposit Address -->
-	<div class="bg-[var(--bg-card)] border border-[var(--accent-green)]/30 rounded-xl p-5">
-		<div class="flex items-center gap-2 mb-4">
-			<svg class="w-5 h-5 text-[var(--accent-green)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-			</svg>
-			<h2 class="text-sm font-semibold text-[var(--text-primary)] uppercase tracking-wider">입금 주소</h2>
-			<span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-green)]/15 text-[var(--accent-green)] font-medium">단일 입금 포인트</span>
-		</div>
-
-		<!-- Primary deposit: Coinbase Agentic Wallet -->
-		<div class="bg-[var(--bg-secondary)] rounded-lg p-5 border-2 border-[var(--accent-blue)]/30 mb-4">
-			<div class="flex items-center gap-2 mb-3">
-				<span class="w-3 h-3 rounded-full bg-[var(--accent-blue)]"></span>
-				<span class="text-base font-bold text-[var(--accent-blue)]">Coinbase Agentic Wallet</span>
-				<span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]">Base Network</span>
+	<!-- 실시간 잔고 -->
+	<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
+			<div class="flex items-center justify-between mb-1">
+				<p class="text-[10px] text-[var(--accent-blue)] uppercase tracking-wider font-medium">Coinbase</p>
+				{#if liveBalances}<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></span>{/if}
 			</div>
-
-			{#if walletAddresses?.coinbase?.address}
-				<div class="flex items-center gap-3 mt-3">
-					<code class="flex-1 text-base font-mono text-[var(--text-primary)] bg-[var(--bg-card)] px-4 py-3 rounded-lg border border-[var(--border)] break-all select-all">
-						{walletAddresses.coinbase.address}
-					</code>
-					<button
-						onclick={() => walletAddresses?.coinbase?.address && copyAddress(walletAddresses.coinbase.address, 'cb_wallet')}
-						class="flex-shrink-0 px-4 py-3 rounded-lg bg-[var(--accent-blue)] text-white font-medium text-sm hover:opacity-90 transition-opacity cursor-pointer flex items-center gap-2"
-						title="주소 복사"
-					>
-						{#if copiedId === 'cb_wallet'}
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-							복사됨
-						{:else}
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-							복사
-						{/if}
-					</button>
-				</div>
-			{:else}
-				<div class="mt-3 px-4 py-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
-					<p class="text-sm text-[var(--text-secondary)]">터미널에서 확인:</p>
-					<code class="block text-sm font-mono text-[var(--accent-blue)] mt-1 select-all">bunx awal address</code>
-				</div>
-			{/if}
-
-			<div class="mt-3 p-3 rounded-lg bg-[var(--accent-green)]/5 border border-[var(--accent-green)]/20">
-				<p class="text-xs text-[var(--accent-green)] font-medium">
-					이 주소로 USDC를 입금하세요. 봇이 HyperLiquid 거래에 필요한 자금을 자동으로 배분합니다.
-				</p>
-			</div>
-		</div>
-
-		<!-- Auto-distribution flow -->
-		<div class="bg-[var(--bg-secondary)] rounded-lg p-4 border border-[var(--border)]">
-			<h3 class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">자동 자금 배분 흐름</h3>
-			<div class="flex items-center gap-2 text-xs">
-				<div class="flex-1 text-center px-3 py-2 rounded bg-[var(--accent-blue)]/10 border border-[var(--accent-blue)]/20">
-					<p class="font-semibold text-[var(--accent-blue)]">Coinbase</p>
-					<p class="text-[10px] text-[var(--text-secondary)]">Base 네트워크</p>
-					<p class="text-[10px] text-[var(--text-secondary)]">USDC 입금</p>
-				</div>
-				<div class="flex flex-col items-center gap-0.5 text-[var(--text-secondary)]">
-					<svg class="w-5 h-5 text-[var(--accent-yellow)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-					<span class="text-[9px]">자동</span>
-				</div>
-				<div class="flex-1 text-center px-3 py-2 rounded bg-[var(--accent-purple)]/10 border border-[var(--accent-purple)]/20">
-					<p class="font-semibold text-[var(--accent-purple)]">HyperLiquid</p>
-					<p class="text-[10px] text-[var(--text-secondary)]">Arbitrum</p>
-					<p class="text-[10px] text-[var(--text-secondary)]">거래 실행</p>
-				</div>
-			</div>
-			<p class="text-[10px] text-[var(--text-secondary)] mt-2 text-center">
-				거래 전 잔고 확인 → 부족 시 자동 충전 / 과다 시 자동 회수
+			<p class="text-2xl font-bold text-[var(--accent-blue)]">
+				{liveBalances ? `$${liveBalances.coinbase.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : wallet.balance ? `$${Number(wallet.balance.coinbase_balance).toFixed(2)}` : 'N/A'}
 			</p>
+			<p class="text-[10px] text-[var(--text-secondary)]">Base Network</p>
+		</div>
+		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
+			<div class="flex items-center justify-between mb-1">
+				<p class="text-[10px] text-[var(--accent-purple)] uppercase tracking-wider font-medium">HyperLiquid</p>
+				{#if liveBalances}<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></span>{/if}
+			</div>
+			<p class="text-2xl font-bold text-[var(--accent-purple)]">
+				{liveBalances ? `$${liveBalances.hyperliquid.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : wallet.balance ? `$${Number(wallet.balance.hyperliquid_balance).toFixed(2)}` : 'N/A'}
+			</p>
+			<p class="text-[10px] text-[var(--text-secondary)]">Arbitrum</p>
+		</div>
+		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
+			<p class="text-[10px] text-white uppercase tracking-wider font-medium mb-1">Total</p>
+			<p class="text-2xl font-bold text-white">
+				{liveBalances ? `$${liveBalances.total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : wallet.balance ? `$${Number(wallet.balance.total_balance).toFixed(2)}` : 'N/A'}
+			</p>
+			{#if liveBalances}<p class="text-[10px] text-[var(--text-secondary)]">Updated: {new Date(liveBalances.timestamp).toLocaleTimeString('ko-KR')}</p>{/if}
 		</div>
 	</div>
 
-	<!-- Balances -->
-	<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
-			<p class="text-xs text-[var(--text-secondary)] uppercase tracking-wider mb-1">Coinbase (Base)</p>
-			<p class="text-2xl font-bold text-[var(--accent-blue)]">
-				{wallet.balance ? `$${Number(wallet.balance.coinbase_balance).toFixed(2)}` : 'N/A'}
-			</p>
+	<!-- HL 상세 잔고 -->
+	{#if liveBalances?.hlDetail && (liveBalances.hlDetail.spot.length > 0 || liveBalances.hlDetail.perp > 0)}
+		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+			<h2 class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider font-semibold mb-2">HyperLiquid 상세</h2>
+			<div class="space-y-1">
+				{#if liveBalances.hlDetail.perp > 0}
+					<div class="flex justify-between text-xs"><span class="text-[var(--text-secondary)]">Perp Margin</span><span class="text-[var(--accent-purple)] font-mono">${liveBalances.hlDetail.perp.toFixed(2)}</span></div>
+				{/if}
+				{#each liveBalances.hlDetail.spot as s}
+					<div class="flex justify-between text-xs"><span class="text-[var(--text-secondary)]">{s.coin} <span class="opacity-50">{s.total}</span></span><span class="text-[var(--accent-purple)] font-mono">${s.usdValue.toFixed(2)}</span></div>
+				{/each}
+			</div>
 		</div>
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
-			<p class="text-xs text-[var(--text-secondary)] uppercase tracking-wider mb-1">HyperLiquid (Arbitrum)</p>
-			<p class="text-2xl font-bold text-[var(--accent-purple)]">
-				{wallet.balance ? `$${Number(wallet.balance.hyperliquid_balance).toFixed(2)}` : 'N/A'}
-			</p>
+	{/if}
+
+	<!-- 입금 주소 + Arbitrum 자동 입금 -->
+	<div class="bg-[var(--bg-card)] border border-[var(--accent-green)]/30 rounded-xl p-4">
+		<div class="flex items-center gap-2 mb-3">
+			<svg class="w-4 h-4 text-[var(--accent-green)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+			<h2 class="text-sm font-semibold uppercase tracking-wider">입금 주소</h2>
 		</div>
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
-			<p class="text-xs text-[var(--text-secondary)] uppercase tracking-wider mb-1">Total Balance</p>
-			<p class="text-2xl font-bold text-white">
-				{wallet.balance ? `$${Number(wallet.balance.total_balance).toFixed(2)}` : 'N/A'}
-			</p>
-			{#if wallet.balance?.timestamp}
-				<p class="text-xs text-[var(--text-secondary)] mt-1">Updated: {formatTime(wallet.balance.timestamp)}</p>
-			{/if}
-		</div>
+
+		{#if walletAddresses?.hyperliquid}
+			<div class="bg-[var(--bg-secondary)] rounded-lg p-3 mb-3">
+				<div class="flex items-center gap-2 mb-2">
+					<span class="w-2.5 h-2.5 rounded-full bg-[var(--accent-purple)]"></span>
+					<span class="text-xs font-semibold text-[var(--accent-purple)]">HyperLiquid</span>
+					<span class="text-[9px] px-1 py-0.5 rounded bg-[var(--accent-purple)]/15 text-[var(--accent-purple)]">Arbitrum</span>
+				</div>
+				<div class="flex items-center gap-2">
+					<code class="flex-1 text-xs font-mono bg-[var(--bg-card)] px-2.5 py-2 rounded border border-[var(--border)] break-all select-all">{walletAddresses.hyperliquid.address}</code>
+					<button onclick={() => walletAddresses?.hyperliquid && copyAddress(walletAddresses.hyperliquid.address, 'hl')} class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-purple)] text-white hover:opacity-90 cursor-pointer">
+						{#if copiedId === 'hl'}<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>{:else}<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>{/if}
+					</button>
+				</div>
+				<!-- Arbitrum → HL 자동입금 -->
+				<div class="mt-2 pt-2 border-t border-[var(--border)]">
+					<div class="flex items-center justify-between gap-2">
+						<div class="flex items-center gap-2">
+							<span class="text-[10px] text-[var(--text-secondary)]">Arbitrum USDC:</span>
+							{#if depositChecking}
+								<span class="text-[10px] text-[var(--text-secondary)] animate-pulse">확인중...</span>
+							{:else if arbUsdcBalance !== null}
+								<span class="text-xs font-bold text-[var(--accent-green)]">${arbUsdcBalance}</span>
+							{:else}
+								<button onclick={checkArbBalance} class="text-[10px] text-[var(--accent-blue)] hover:underline cursor-pointer">잔고 확인</button>
+							{/if}
+						</div>
+						<button onclick={executeDeposit} disabled={depositLoading} class="text-[10px] px-3 py-1.5 rounded-lg bg-[var(--accent-green)] text-black font-bold hover:opacity-90 disabled:opacity-50 cursor-pointer disabled:cursor-wait">
+							{depositLoading ? '입금 중...' : 'Arbitrum → HL 입금'}
+						</button>
+					</div>
+					{#if depositResult}
+						<div class="mt-2 text-[10px] rounded p-2 {depositResult.status === 'success' ? 'bg-[var(--accent-green)]/10 text-[var(--accent-green)]' : 'bg-[var(--accent-red)]/10 text-[var(--accent-red)]'}">
+							{#if depositResult.status === 'success'}입금 완료: {depositResult.amount} USDC {#if depositResult.arbiscan}<a href={depositResult.arbiscan} target="_blank" class="underline ml-1">Tx 보기</a>{/if}{:else}오류: {depositResult.error}{/if}
+						</div>
+					{/if}
+				</div>
+			</div>
+		{/if}
+
+		{#if walletAddresses?.coinbase?.address}
+			<div class="bg-[var(--bg-secondary)] rounded-lg p-3">
+				<div class="flex items-center gap-2 mb-2">
+					<span class="w-2.5 h-2.5 rounded-full bg-[var(--accent-blue)]"></span>
+					<span class="text-xs font-semibold text-[var(--accent-blue)]">Coinbase</span>
+					<span class="text-[9px] px-1 py-0.5 rounded bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]">Base</span>
+				</div>
+				<div class="flex items-center gap-2">
+					<code class="flex-1 text-xs font-mono bg-[var(--bg-card)] px-2.5 py-2 rounded border border-[var(--border)] break-all select-all">{walletAddresses.coinbase.address}</code>
+					<button onclick={() => walletAddresses?.coinbase?.address && copyAddress(walletAddresses.coinbase.address, 'cb')} class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-blue)] text-white hover:opacity-90 cursor-pointer">
+						{#if copiedId === 'cb'}<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>{:else}<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>{/if}
+					</button>
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Balance History -->
 	{#if wallet.balanceHistory && wallet.balanceHistory.length > 0}
 		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-			<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">Balance History</h2>
+			<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">잔고 히스토리</h2>
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">
-					<thead>
-						<tr class="text-[var(--text-secondary)] text-xs uppercase border-b border-[var(--border)]">
-							<th class="text-left py-2 px-3">Time</th>
-							<th class="text-right py-2 px-3">Coinbase</th>
-							<th class="text-right py-2 px-3">HyperLiquid</th>
-							<th class="text-right py-2 px-3">Total</th>
-						</tr>
-					</thead>
+					<thead><tr class="text-[var(--text-secondary)] text-xs uppercase border-b border-[var(--border)]"><th class="text-left py-2 px-3">시간</th><th class="text-right py-2 px-3">Coinbase</th><th class="text-right py-2 px-3">HyperLiquid</th><th class="text-right py-2 px-3">Total</th></tr></thead>
 					<tbody>
 						{#each wallet.balanceHistory.slice(0, 20) as row}
 							<tr class="border-b border-[var(--border)]/50">
@@ -204,29 +231,17 @@
 
 	<!-- Transfers -->
 	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-		<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">Transfer History</h2>
+		<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">전송 히스토리</h2>
 		{#if wallet.transfers && wallet.transfers.length > 0}
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">
-					<thead>
-						<tr class="text-[var(--text-secondary)] text-xs uppercase border-b border-[var(--border)]">
-							<th class="text-left py-2 px-3">Time</th>
-							<th class="text-left py-2 px-3">Direction</th>
-							<th class="text-right py-2 px-3">Amount</th>
-							<th class="text-left py-2 px-3">Currency</th>
-							<th class="text-left py-2 px-3">Status</th>
-							<th class="text-left py-2 px-3">TX Hash</th>
-						</tr>
-					</thead>
+					<thead><tr class="text-[var(--text-secondary)] text-xs uppercase border-b border-[var(--border)]"><th class="text-left py-2 px-3">시간</th><th class="text-left py-2 px-3">유형</th><th class="text-right py-2 px-3">금액</th><th class="text-left py-2 px-3">상태</th><th class="text-left py-2 px-3">TX</th></tr></thead>
 					<tbody>
 						{#each wallet.transfers as tx}
 							<tr class="border-b border-[var(--border)]/50">
 								<td class="py-2 px-3 text-[var(--text-secondary)] text-xs">{formatTime(tx.timestamp)}</td>
-								<td class="py-2 px-3">
-									<span class="px-2 py-0.5 rounded text-xs font-medium {tx.direction === 'deposit' ? 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]' : 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'}">{tx.direction}</span>
-								</td>
+								<td class="py-2 px-3"><span class="px-2 py-0.5 rounded text-xs font-medium {tx.direction === 'deposit' ? 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]' : 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'}">{tx.direction}</span></td>
 								<td class="py-2 px-3 text-right font-mono">${Number(tx.amount).toFixed(2)}</td>
-								<td class="py-2 px-3">{tx.currency}</td>
 								<td class="py-2 px-3 text-xs">{tx.status}</td>
 								<td class="py-2 px-3 font-mono text-xs text-[var(--text-secondary)]">{tx.tx_hash ? tx.tx_hash.slice(0, 10) + '...' : '-'}</td>
 							</tr>
@@ -235,7 +250,7 @@
 				</table>
 			</div>
 		{:else}
-			<p class="text-[var(--text-secondary)] text-sm py-4 text-center">No transfers recorded</p>
+			<p class="text-[var(--text-secondary)] text-sm py-4 text-center">전송 기록 없음</p>
 		{/if}
 	</div>
 </div>

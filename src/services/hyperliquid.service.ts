@@ -340,16 +340,28 @@ export class HyperliquidService {
     return result;
   }
 
+  async getMaxLeverage(coin: string): Promise<number> {
+    const meta = await this.getMeta();
+    const asset = meta.universe.find((u) => u.name === coin);
+    return asset?.maxLeverage ?? 5;
+  }
+
   async setLeverage(coin: string, leverage: number, isCross: boolean = true): Promise<void> {
     if (!this.exchangeClient) throw new Error("지갑이 초기화되지 않았습니다");
+
+    const maxLev = await this.getMaxLeverage(coin);
+    const safeLeverage = Math.min(leverage, maxLev);
+    if (safeLeverage !== leverage) {
+      logger.warn(`${coin} 레버리지 클램프: ${leverage}x → ${safeLeverage}x (최대: ${maxLev}x)`);
+    }
 
     const assetIndex = await this.getCoinIndex(coin);
     await this.exchangeClient.updateLeverage({
       asset: assetIndex,
       isCross,
-      leverage,
+      leverage: safeLeverage,
     });
-    logger.info("레버리지 설정", { coin, leverage, isCross });
+    logger.info("레버리지 설정", { coin, leverage: safeLeverage, maxLeverage: maxLev, isCross });
   }
 
   async closeAllPositions(): Promise<void> {

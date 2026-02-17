@@ -74,6 +74,8 @@ export async function runOpenClawAgent(
 		cwd?: string;
 		timeoutMs?: number;
 		outputFile?: string;
+		agentId?: string;
+		sessionId?: string;
 	} = {},
 ): Promise<OpenClawResult> {
 	const bin = getOpenClawPath();
@@ -83,6 +85,7 @@ export async function runOpenClawAgent(
 
 	const start = Date.now();
 	const timeoutMs = opts.timeoutMs ?? 300_000;
+	const agentId = opts.agentId ?? 'trader';
 
 	try {
 		const spawnOpts: Parameters<typeof Bun.spawn>[1] = {
@@ -98,7 +101,12 @@ export async function runOpenClawAgent(
 			spawnOpts.stdout = 'pipe' as const;
 		}
 
-		const proc = Bun.spawn([bin, 'agent', '--agent', 'main', '--message', message], spawnOpts);
+		const args = [bin, 'agent', '--agent', agentId, '--message', message];
+		if (opts.sessionId) {
+			args.push('--session-id', opts.sessionId);
+		}
+
+		const proc = Bun.spawn(args, spawnOpts);
 
 		const timer = setTimeout(() => proc.kill(), timeoutMs);
 		const exitCode = await proc.exited;

@@ -88,13 +88,4 @@
 	});
 </script>
 
-<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-	<div class="flex items-center justify-between mb-3">
-		<h3 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">{symbol} Price Chart</h3>
-		<div class="flex items-center gap-4 text-xs">
-			<span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-[#eab308] inline-block"></span> Binance</span>
-			<span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-[#a855f7] inline-block"></span> HyperLiquid</span>
-		</div>
-	</div>
-	<div bind:this={chartContainer}></div>
-</div>
+<div bind:this={chartContainer}></div>
