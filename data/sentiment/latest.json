@@ -1,22 +1,22 @@
 {
-  "collected_at": "2026-02-17T05:36:58.173Z",
+  "collected_at": "2026-02-17T05:47:24.367Z",
   "count": 31,
   "sentiment": [
     {
       "symbol": "BTC",
       "binance_pair": "BTCUSDT",
       "hl": {
-        "funding": 0.0000041086,
-        "openInterest": 17668.80206,
-        "premium": -0.0004591071,
-        "oraclePx": 67958,
-        "markPx": 67921,
-        "dayNtlVlm": 1649604652.417371,
-        "impactBid": 67923,
-        "impactAsk": 67926.8
+        "funding": 0.0000043588,
+        "openInterest": 17917.71552,
+        "premium": -0.0004255444,
+        "oraclePx": 68148,
+        "markPx": 68116,
+        "dayNtlVlm": 1669332963.7491872,
+        "impactBid": 68118,
+        "impactAsk": 68119
       },
       "binance": {
-        "openInterest": 76790.673,
+        "openInterest": 76763.846,
         "fundingHistory": [
           {
             "rate": -0.00003094,
@@ -74,17 +74,17 @@
       "symbol": "ETH",
       "binance_pair": "ETHUSDT",
       "hl": {
-        "funding": 0.0000125,
-        "openInterest": 487175.7360000002,
-        "premium": -0.0004067521,
-        "oraclePx": 1966.8,
-        "markPx": 1965.7,
-        "dayNtlVlm": 812693092.1904008,
-        "impactBid": 1965.9,
-        "impactAsk": 1966
+        "funding": 0.0000107183,
+        "openInterest": 488266.4113999999,
+        "premium": -0.0005068681,
+        "oraclePx": 1972.9,
+        "markPx": 1971.9,
+        "dayNtlVlm": 820027406.7274803,
+        "impactBid": 1971.8,
+        "impactAsk": 1971.9
       },
       "binance": {
-        "openInterest": 1759353.466,
+        "openInterest": 1758203.202,
         "fundingHistory": [
           {
             "rate": -0.00001921,
@@ -142,17 +142,17 @@
       "symbol": "SOL",
       "binance_pair": "SOLUSDT",
       "hl": {
-        "funding": -0.0000015691,
-        "openInterest": 3311214.7600000002,
-        "premium": -0.0004488341,
-        "oraclePx": 85.555,
-        "markPx": 85.511,
-        "dayNtlVlm": 295347401.3182002,
-        "impactBid": 85.512,
-        "impactAsk": 85.5166
+        "funding": -0.0000026627,
+        "openInterest": 3302273.440000001,
+        "premium": -0.0006382361,
+        "oraclePx": 86.175,
+        "markPx": 86.121,
+        "dayNtlVlm": 296691455.40356004,
+        "impactBid": 86.119,
+        "impactAsk": 86.12
       },
       "binance": {
-        "openInterest": 9414037.94,
+        "openInterest": 9417832.13,
         "fundingHistory": [
           {
             "rate": -0.00005619,
@@ -210,17 +210,17 @@
       "symbol": "XRP",
       "binance_pair": "XRPUSDT",
       "hl": {
-        "funding": -0.0000359121,
-        "openInterest": 65595458,
-        "premium": -0.0006112054,
-        "oraclePx": 1.4725,
-        "markPx": 1.4714,
-        "dayNtlVlm": 82071530.80460003,
-        "impactBid": 1.4715,
-        "impactAsk": 1.4716
+        "funding": -0.0000359575,
+        "openInterest": 65599526,
+        "premium": -0.0007448033,
+        "oraclePx": 1.4769,
+        "markPx": 1.4757,
+        "dayNtlVlm": 82235417.91020001,
+        "impactBid": 1.4757,
+        "impactAsk": 1.4758
       },
       "binance": {
-        "openInterest": 263051546.7,
+        "openInterest": 263157904.7,
         "fundingHistory": [
           {
             "rate": -0.00011636,
@@ -278,17 +278,17 @@
       "symbol": "DOGE",
       "binance_pair": "DOGEUSDT",
       "hl": {
-        "funding": 0.0000062823,
-        "openInterest": 236711582,
-        "premium": -0.0002921031,
-        "oraclePx": 0.09928,
-        "markPx": 0.099225,
-        "dayNtlVlm": 9978189.735194998,
-        "impactBid": 0.099222,
-        "impactAsk": 0.099251
+        "funding": 0.0000054967,
+        "openInterest": 233732160,
+        "premium": -0.0005718012,
+        "oraclePx": 0.099685,
+        "markPx": 0.099625,
+        "dayNtlVlm": 10139829.878836004,
+        "impactBid": 0.099618,
+        "impactAsk": 0.099628
       },
       "binance": {
-        "openInterest": 1706321621,
+        "openInterest": 1705649709,
         "fundingHistory": [
           {
             "rate": 0.00006395,
@@ -346,17 +346,17 @@
       "symbol": "kPEPE",
       "binance_pair": "1000PEPEUSDT",
       "hl": {
-        "funding": 0.0000079501,
-        "openInterest": 3371820204,
-        "premium": -0.0002285714,
-        "oraclePx": 0.004375,
-        "markPx": 0.004373,
-        "dayNtlVlm": 13943503.534257993,
-        "impactBid": 0.004372,
-        "impactAsk": 0.004374
+        "funding": 0.0000104662,
+        "openInterest": 3371751616,
+        "premium": -0.0002282063,
+        "oraclePx": 0.004382,
+        "markPx": 0.00438,
+        "dayNtlVlm": 13957774.588413995,
+        "impactBid": 0.004378,
+        "impactAsk": 0.004381
       },
       "binance": {
-        "openInterest": 18343885972,
+        "openInterest": 18348247962,
         "fundingHistory": [
           {
             "rate": 0.00004535,
@@ -415,16 +415,16 @@
       "binance_pair": "ZECUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 304818.4799999998,
-        "premium": 0,
-        "oraclePx": 287.44,
-        "markPx": 287.41,
-        "dayNtlVlm": 66073981.243400045,
-        "impactBid": 287.3693,
-        "impactAsk": 287.4536
+        "openInterest": 304965.0999999999,
+        "premium": -0.0000204188,
+        "oraclePx": 288.95,
+        "markPx": 288.9,
+        "dayNtlVlm": 66304673.8598,
+        "impactBid": 288.8345,
+        "impactAsk": 288.9441
       },
       "binance": {
-        "openInterest": 438861.687,
+        "openInterest": 439062.012,
         "fundingHistory": [
           {
             "rate": -0.00005255,
@@ -483,16 +483,16 @@
       "binance_pair": "BNBUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 44240.796,
-        "premium": -0.0003559464,
-        "oraclePx": 620.88,
-        "markPx": 620.58,
-        "dayNtlVlm": 7174740.15447,
-        "impactBid": 620.323,
-        "impactAsk": 620.659
+        "openInterest": 44271.842,
+        "premium": -0.0002295529,
+        "oraclePx": 622.95,
+        "markPx": 622.71,
+        "dayNtlVlm": 7242535.930230001,
+        "impactBid": 622.608,
+        "impactAsk": 622.807
       },
       "binance": {
-        "openInterest": 502534.06,
+        "openInterest": 502269.75,
         "fundingHistory": [
           {
             "rate": 0,
@@ -551,16 +551,16 @@
       "binance_pair": "HYPEUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 22894003.20000001,
-        "premium": -0.0004692509,
-        "oraclePx": 30.261,
-        "markPx": 30.246,
-        "dayNtlVlm": 145405892.61560005,
-        "impactBid": 30.2378,
-        "impactAsk": 30.2468
+        "openInterest": 22853551.42000004,
+        "premium": -0.0000330644,
+        "oraclePx": 30.244,
+        "markPx": 30.241,
+        "dayNtlVlm": 148009417.09669006,
+        "impactBid": 30.2393,
+        "impactAsk": 30.243
       },
       "binance": {
-        "openInterest": 5415487.09,
+        "openInterest": 5390262.04,
         "fundingHistory": [
           {
             "rate": -0.00010234,
@@ -618,17 +618,17 @@
       "symbol": "SUI",
       "binance_pair": "SUIUSDT",
       "hl": {
-        "funding": 0.0000090365,
-        "openInterest": 12996423.6,
-        "premium": -0.0001548227,
-        "oraclePx": 0.96885,
-        "markPx": 0.96836,
-        "dayNtlVlm": 9865131.507480998,
-        "impactBid": 0.96815,
-        "impactAsk": 0.9687
+        "funding": 0.0000083986,
+        "openInterest": 12968427.199999997,
+        "premium": -0.0003693255,
+        "oraclePx": 0.97475,
+        "markPx": 0.9742,
+        "dayNtlVlm": 9905743.160125004,
+        "impactBid": 0.97413,
+        "impactAsk": 0.97439
       },
       "binance": {
-        "openInterest": 94730614.8,
+        "openInterest": 94813755.8,
         "fundingHistory": [
           {
             "rate": -0.00007056,
@@ -686,17 +686,17 @@
       "symbol": "ADA",
       "binance_pair": "ADAUSDT",
       "hl": {
-        "funding": -0.0000021825,
-        "openInterest": 54610114,
-        "premium": -0.0004822246,
-        "oraclePx": 0.2841,
-        "markPx": 0.28385,
-        "dayNtlVlm": 3528861.2266099984,
-        "impactBid": 0.283802,
-        "impactAsk": 0.283963
+        "funding": -0.0000022415,
+        "openInterest": 54600800,
+        "premium": -0.0004097356,
+        "oraclePx": 0.28555,
+        "markPx": 0.28533,
+        "dayNtlVlm": 3535967.0347999986,
+        "impactBid": 0.285265,
+        "impactAsk": 0.285433
       },
       "binance": {
-        "openInterest": 267240006,
+        "openInterest": 267141174,
         "fundingHistory": [
           {
             "rate": 0.00009573,
@@ -754,17 +754,17 @@
       "symbol": "VVV",
       "binance_pair": "VVVUSDT",
       "hl": {
-        "funding": -0.0000745262,
-        "openInterest": 1937321.4000000001,
-        "premium": -0.0000718219,
-        "oraclePx": 4.177,
-        "markPx": 4.173,
-        "dayNtlVlm": 14737505.960870005,
-        "impactBid": 4.1701,
-        "impactAsk": 4.1767
+        "funding": -0.0000640804,
+        "openInterest": 2005279.7000000002,
+        "premium": 0,
+        "oraclePx": 4.3017,
+        "markPx": 4.2985,
+        "dayNtlVlm": 15128980.723370004,
+        "impactBid": 4.2971,
+        "impactAsk": 4.3056
       },
       "binance": {
-        "openInterest": 3102286.71,
+        "openInterest": 3095890.04,
         "fundingHistory": [
           {
             "rate": -0.01266612,
@@ -823,16 +823,16 @@
       "binance_pair": "TAOUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 88567.96,
-        "premium": 0,
-        "oraclePx": 194.3,
-        "markPx": 194.24,
-        "dayNtlVlm": 25913665.942919984,
-        "impactBid": 194.246,
-        "impactAsk": 194.337
+        "openInterest": 88568.926,
+        "premium": 0.0000720091,
+        "oraclePx": 194.42,
+        "markPx": 194.47,
+        "dayNtlVlm": 25922640.11686999,
+        "impactBid": 194.434,
+        "impactAsk": 194.555
       },
       "binance": {
-        "openInterest": 213093.869,
+        "openInterest": 213437.286,
         "fundingHistory": [
           {
             "rate": 0.00000447,
@@ -890,17 +890,17 @@
       "symbol": "ASTER",
       "binance_pair": "ASTERUSDT",
       "hl": {
-        "funding": -0.0000039632,
-        "openInterest": 69900560,
-        "premium": -0.000351195,
-        "oraclePx": 0.71755,
-        "markPx": 0.71695,
-        "dayNtlVlm": 11652790.780359996,
-        "impactBid": 0.71679,
-        "impactAsk": 0.717298
+        "funding": -0.0000057982,
+        "openInterest": 69887916,
+        "premium": -0.0007375205,
+        "oraclePx": 0.71998,
+        "markPx": 0.71933,
+        "dayNtlVlm": 11674785.453910006,
+        "impactBid": 0.719005,
+        "impactAsk": 0.719449
       },
       "binance": {
-        "openInterest": 129643072,
+        "openInterest": 129765299,
         "fundingHistory": [
           {
             "rate": -0.00001576,
@@ -959,16 +959,16 @@
       "binance_pair": "LINKUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 2194175.4,
-        "premium": 0,
-        "oraclePx": 8.8065,
-        "markPx": 8.804,
-        "dayNtlVlm": 3296388.3770700004,
-        "impactBid": 8.8048,
-        "impactAsk": 8.80813
+        "openInterest": 2194602.4,
+        "premium": -0.0004179846,
+        "oraclePx": 8.852,
+        "markPx": 8.8483,
+        "dayNtlVlm": 3301946.4049300007,
+        "impactBid": 8.84648,
+        "impactAsk": 8.8483
       },
       "binance": {
-        "openInterest": 8620312.91,
+        "openInterest": 8620774.38,
         "fundingHistory": [
           {
             "rate": 0.00004944,
@@ -1027,16 +1027,16 @@
       "binance_pair": "AVAXUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 3427787.2399999998,
-        "premium": -0.0001530891,
-        "oraclePx": 9.145,
-        "markPx": 9.1403,
-        "dayNtlVlm": 2916540.7137140003,
-        "impactBid": 9.1406,
-        "impactAsk": 9.1436
+        "openInterest": 3427974.9800000004,
+        "premium": -0.0000545494,
+        "oraclePx": 9.166,
+        "markPx": 9.163,
+        "dayNtlVlm": 2920954.002652001,
+        "impactBid": 9.1636,
+        "impactAsk": 9.1655
       },
       "binance": {
-        "openInterest": 7283900,
+        "openInterest": 7287568,
         "fundingHistory": [
           {
             "rate": 0.00008281,
@@ -1095,16 +1095,16 @@
       "binance_pair": "BCHUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 40016.874,
-        "premium": -0.0001675579,
-        "oraclePx": 561,
-        "markPx": 560.75,
-        "dayNtlVlm": 9551313.059689997,
-        "impactBid": 560.744,
-        "impactAsk": 560.906
+        "openInterest": 40421.484,
+        "premium": 0,
+        "oraclePx": 562.25,
+        "markPx": 562.25,
+        "dayNtlVlm": 9775629.052379997,
+        "impactBid": 562.098,
+        "impactAsk": 562.363
       },
       "binance": {
-        "openInterest": 388604.905,
+        "openInterest": 388532.83,
         "fundingHistory": [
           {
             "rate": 0.00007569,
@@ -1162,17 +1162,17 @@
       "symbol": "LTC",
       "binance_pair": "LTCUSDT",
       "hl": {
-        "funding": 0.000010707,
-        "openInterest": 287735.1600000001,
-        "premium": -0.0004200146,
-        "oraclePx": 54.76,
-        "markPx": 54.719,
-        "dayNtlVlm": 2003574.5271099997,
-        "impactBid": 54.729,
-        "impactAsk": 54.737
+        "funding": 0.0000103952,
+        "openInterest": 287617.8200000001,
+        "premium": -0.0003819571,
+        "oraclePx": 54.98,
+        "markPx": 54.952,
+        "dayNtlVlm": 2017453.4007399997,
+        "impactBid": 54.953,
+        "impactAsk": 54.959
       },
       "binance": {
-        "openInterest": 1271541.885,
+        "openInterest": 1271061.266,
         "fundingHistory": [
           {
             "rate": -0.00000793,
@@ -1230,17 +1230,17 @@
       "symbol": "DOT",
       "binance_pair": "DOTUSDT",
       "hl": {
-        "funding": -0.0000191304,
-        "openInterest": 2985261.2,
-        "premium": -0.0003813715,
-        "oraclePx": 1.3635,
-        "markPx": 1.3619,
-        "dayNtlVlm": 692449.0247300001,
-        "impactBid": 1.36145,
-        "impactAsk": 1.36298
+        "funding": -0.0000198744,
+        "openInterest": 2990398,
+        "premium": -0.0005837286,
+        "oraclePx": 1.3705,
+        "markPx": 1.369,
+        "dayNtlVlm": 698345.0469,
+        "impactBid": 1.36829,
+        "impactAsk": 1.3697
       },
       "binance": {
-        "openInterest": 24585945.4,
+        "openInterest": 24589137.5,
         "fundingHistory": [
           {
             "rate": 0.0001,
@@ -1298,17 +1298,17 @@
       "symbol": "UNI",
       "binance_pair": "UNIUSDT",
       "hl": {
-        "funding": -0.0000010144,
-        "openInterest": 3863386.6,
-        "premium": -0.0004693243,
-        "oraclePx": 3.537,
-        "markPx": 3.5338,
-        "dayNtlVlm": 3135534.1225900003,
-        "impactBid": 3.53275,
-        "impactAsk": 3.53534
+        "funding": -0.0000060668,
+        "openInterest": 3863730.4,
+        "premium": -0.0007044625,
+        "oraclePx": 3.563,
+        "markPx": 3.5595,
+        "dayNtlVlm": 3151983.006870001,
+        "impactBid": 3.55844,
+        "impactAsk": 3.56049
       },
       "binance": {
-        "openInterest": 19492140,
+        "openInterest": 19490850,
         "fundingHistory": [
           {
             "rate": 0.00005988,
@@ -1367,13 +1367,13 @@
       "binance_pair": "NEARUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 8769596,
-        "premium": -0.000383693,
-        "oraclePx": 1.0425,
-        "markPx": 1.0416,
-        "dayNtlVlm": 1400313.3963400002,
-        "impactBid": 1.04112,
-        "impactAsk": 1.0421
+        "openInterest": 8751650,
+        "premium": -0.0002383677,
+        "oraclePx": 1.0488,
+        "markPx": 1.0481,
+        "dayNtlVlm": 1416052.2240700005,
+        "impactBid": 1.04764,
+        "impactAsk": 1.04855
       },
       "binance": null,
       "sentiment_summary": {
@@ -1389,14 +1389,14 @@
       "symbol": "APT",
       "binance_pair": "APTUSDT",
       "hl": {
-        "funding": -0.0000123902,
-        "openInterest": 6886840.800000001,
-        "premium": -0.0001088139,
-        "oraclePx": 0.919,
-        "markPx": 0.9181,
-        "dayNtlVlm": 1936275.9975070006,
-        "impactBid": 0.918,
-        "impactAsk": 0.9189
+        "funding": -0.0000209155,
+        "openInterest": 6886713.36,
+        "premium": -0.0010815488,
+        "oraclePx": 0.9246,
+        "markPx": 0.9233,
+        "dayNtlVlm": 1941665.580323,
+        "impactBid": 0.9231,
+        "impactAsk": 0.9236
       },
       "binance": null,
       "sentiment_summary": {
@@ -1413,13 +1413,13 @@
       "binance_pair": "ARBUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 26052823.2,
-        "premium": -0.0000883002,
-        "oraclePx": 0.11325,
-        "markPx": 0.11315,
-        "dayNtlVlm": 1478820.5995250002,
-        "impactBid": 0.11312,
-        "impactAsk": 0.11324
+        "openInterest": 26056434.2,
+        "premium": -0.0001755772,
+        "oraclePx": 0.11391,
+        "markPx": 0.11382,
+        "dayNtlVlm": 1482402.690768,
+        "impactBid": 0.11379,
+        "impactAsk": 0.11389
       },
       "binance": null,
       "sentiment_summary": {
@@ -1436,13 +1436,13 @@
       "binance_pair": "TRXUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 24124430,
-        "premium": -0.0002640845,
-        "oraclePx": 0.284,
-        "markPx": 0.28388,
-        "dayNtlVlm": 1097089.9102399999,
-        "impactBid": 0.283817,
-        "impactAsk": 0.283925
+        "openInterest": 24124658,
+        "premium": -0.0002041032,
+        "oraclePx": 0.28417,
+        "markPx": 0.28403,
+        "dayNtlVlm": 1097405.3660400002,
+        "impactBid": 0.28398,
+        "impactAsk": 0.284112
       },
       "binance": null,
       "sentiment_summary": {
@@ -1459,13 +1459,13 @@
       "binance_pair": "TONUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 6288898.2,
-        "premium": -0.0001603905,
-        "oraclePx": 1.434,
-        "markPx": 1.4332,
-        "dayNtlVlm": 6516926.44826,
-        "impactBid": 1.43306,
-        "impactAsk": 1.43377
+        "openInterest": 6289420.4,
+        "premium": -0.0003340292,
+        "oraclePx": 1.437,
+        "markPx": 1.4362,
+        "dayNtlVlm": 6521241.9105,
+        "impactBid": 1.43539,
+        "impactAsk": 1.43652
       },
       "binance": null,
       "sentiment_summary": {
@@ -1482,13 +1482,13 @@
       "binance_pair": "AAVEUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 241482.36,
-        "premium": 0,
-        "oraclePx": 124.32,
-        "markPx": 124.27,
-        "dayNtlVlm": 4423215.9103000015,
-        "impactBid": 124.2607,
-        "impactAsk": 124.32
+        "openInterest": 241853.1399999999,
+        "premium": -0.0001913183,
+        "oraclePx": 124.4,
+        "markPx": 124.35,
+        "dayNtlVlm": 4469756.881100004,
+        "impactBid": 124.3236,
+        "impactAsk": 124.3762
       },
       "binance": null,
       "sentiment_summary": {
@@ -1505,13 +1505,13 @@
       "binance_pair": "OPUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 16775401,
-        "premium": 0,
-        "oraclePx": 0.18675,
-        "markPx": 0.18655,
-        "dayNtlVlm": 248488.578799,
-        "impactBid": 0.1865,
-        "impactAsk": 0.18675
+        "openInterest": 16770987.6,
+        "premium": -0.0007985094,
+        "oraclePx": 0.18785,
+        "markPx": 0.18763,
+        "dayNtlVlm": 250440.046861,
+        "impactBid": 0.18753,
+        "impactAsk": 0.1877
       },
       "binance": null,
       "sentiment_summary": {
@@ -1527,14 +1527,14 @@
       "symbol": "ATOM",
       "binance_pair": "ATOMUSDT",
       "hl": {
-        "funding": 0.0000125,
-        "openInterest": 1435587.62,
-        "premium": -0.0000441599,
-        "oraclePx": 2.2645,
-        "markPx": 2.2615,
-        "dayNtlVlm": 2060282.2658349993,
-        "impactBid": 2.2592,
-        "impactAsk": 2.2644
+        "funding": 0.0000087148,
+        "openInterest": 1436624.06,
+        "premium": -0.0009210526,
+        "oraclePx": 2.28,
+        "markPx": 2.2761,
+        "dayNtlVlm": 2065565.8481329994,
+        "impactBid": 2.2748,
+        "impactAsk": 2.2779
       },
       "binance": null,
       "sentiment_summary": {
@@ -1551,13 +1551,13 @@
       "binance_pair": "RENDERUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 798717.7999999999,
-        "premium": 0,
-        "oraclePx": 1.4425,
-        "markPx": 1.4406,
-        "dayNtlVlm": 416627.1267600001,
-        "impactBid": 1.43926,
-        "impactAsk": 1.4432
+        "openInterest": 798671.2,
+        "premium": -0.000459849,
+        "oraclePx": 1.457,
+        "markPx": 1.4549,
+        "dayNtlVlm": 416918.5852500001,
+        "impactBid": 1.45401,
+        "impactAsk": 1.45633
       },
       "binance": null,
       "sentiment_summary": {
@@ -1574,13 +1574,13 @@
       "binance_pair": "INJUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 573324.8,
-        "premium": -0.0000899685,
-        "oraclePx": 3.1122,
-        "markPx": 3.1085,
-        "dayNtlVlm": 194920.1629800001,
-        "impactBid": 3.10716,
-        "impactAsk": 3.11192
+        "openInterest": 573250.4,
+        "premium": -0.0002336748,
+        "oraclePx": 3.124,
+        "markPx": 3.1211,
+        "dayNtlVlm": 195113.2922000001,
+        "impactBid": 3.12032,
+        "impactAsk": 3.12327
       },
       "binance": null,
       "sentiment_summary": {
@@ -1597,13 +1597,13 @@
       "binance_pair": "FILUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 2854417.4,
-        "premium": -0.0001147626,
-        "oraclePx": 0.9585,
-        "markPx": 0.95763,
-        "dayNtlVlm": 536279.7000629999,
-        "impactBid": 0.95711,
-        "impactAsk": 0.95839
+        "openInterest": 2854532.6,
+        "premium": -0.0007151,
+        "oraclePx": 0.9649,
+        "markPx": 0.96378,
+        "dayNtlVlm": 536909.1178029999,
+        "impactBid": 0.96327,
+        "impactAsk": 0.96421
       },
       "binance": null,
       "sentiment_summary": {
