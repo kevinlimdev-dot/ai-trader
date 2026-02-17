@@ -1,7 +1,7 @@
 ---
 name: data-collector
 description: 바이낸스 선물과 하이퍼리퀴드에서 실시간 가격 데이터를 수집하고 표준화된 스냅샷을 생성합니다.
-metadata: {"openclaw":{"requires":{"bins":["bun"]},"primaryEnv":"BINANCE_API_KEY"}}
+metadata: {"openclaw":{"requires":{"bins":["bun"]}}}
 ---
 
 ## 목적

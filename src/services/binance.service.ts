@@ -203,13 +203,19 @@ export class BinanceService {
     ask: number;
     volume24h: number;
     candles: CandleData[];
+    candles_15m: CandleData[];
+    candles_1h: CandleData[];
+    candles_4h: CandleData[];
   }> {
     const config = loadConfig();
-    const [priceData, depthData, volume, candles] = await Promise.all([
+    const [priceData, depthData, volume, candles, candles15m, candles1h, candles4h] = await Promise.all([
       this.getMarkPrice(binancePair),
       this.getDepth(binancePair),
       this.get24hrVolume(binancePair),
       this.getKlines(binancePair, config.data_agent.candle_interval, config.data_agent.candle_lookback),
+      this.getKlines(binancePair, "15m", 100),
+      this.getKlines(binancePair, "1h", 100),
+      this.getKlines(binancePair, "4h", 100),
     ]);
 
     return {
@@ -219,6 +225,9 @@ export class BinanceService {
       ask: depthData.bestAsk,
       volume24h: volume,
       candles,
+      candles_15m: candles15m,
+      candles_1h: candles1h,
+      candles_4h: candles4h,
     };
   }
 

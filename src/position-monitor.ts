@@ -110,7 +110,7 @@ interface CheckResult {
 	details: any[];
 }
 
-async function checkPositions(hl: HyperliquidService, risk: RiskManager): Promise<CheckResult> {
+async function checkPositions(hl: HyperliquidService, risk: RiskManager, tradePreset?: { stopLoss: { atr_multiplier: number }; takeProfit: { atr_multiplier: number } }): Promise<CheckResult> {
 	const openTrades = getOpenTrades();
 	if (openTrades.length === 0) {
 		return { positions: 0, closed: 0, details: [] };
@@ -138,16 +138,20 @@ async function checkPositions(hl: HyperliquidService, risk: RiskManager): Promis
 		const pnl = (currentPrice - trade.entry_price) * direction * trade.size;
 		const pnlPct = ((currentPrice - trade.entry_price) / trade.entry_price) * direction * 100;
 
+		// DB에서 SL/TP 가져오기 — 폴백: 프리셋 ATR 비율 기반
+		const slFallbackPct = (tradePreset?.stopLoss.atr_multiplier ?? 1.5) * 0.02;
+		const tpFallbackPct = (tradePreset?.takeProfit.atr_multiplier ?? 3.0) * 0.02;
 		const stopLoss = trade.stop_loss || (trade.side === "LONG"
-			? trade.entry_price * 0.98
-			: trade.entry_price * 1.02);
+			? trade.entry_price * (1 - slFallbackPct)
+			: trade.entry_price * (1 + slFallbackPct));
 		const takeProfit = trade.take_profit || (trade.side === "LONG"
-			? trade.entry_price * 1.03
-			: trade.entry_price * 0.97);
+			? trade.entry_price * (1 + tpFallbackPct)
+			: trade.entry_price * (1 - tpFallbackPct));
 
-		// Peak PnL 업데이트
+		// Peak PnL 업데이트 — 수익 방향만 추적
 		const prevPeak = trade.peak_pnl_pct || 0;
-		const newPeak = Math.max(prevPeak, Math.abs(pnlPct));
+		const profitPnlPct = Math.max(0, pnlPct);
+		const newPeak = Math.max(prevPeak, profitPnlPct);
 		if (newPeak > prevPeak) {
 			updateTrade(trade.trade_id, { peak_pnl_pct: newPeak });
 		}
@@ -170,17 +174,16 @@ async function checkPositions(hl: HyperliquidService, risk: RiskManager): Promis
 			}
 		}
 
-		// Trailing Stop
-		if (!exitReason) {
-			const absPnlPct = Math.abs(pnlPct);
-			const isActivated = trade.trailing_activated === 1 || risk.shouldActivateTrailingStop(absPnlPct);
+		// Trailing Stop — 수익 방향(pnlPct > 0)에서만 동작
+		if (!exitReason && pnlPct > 0) {
+			const isActivated = trade.trailing_activated === 1 || risk.shouldActivateTrailingStop(pnlPct);
 
 			if (isActivated && trade.trailing_activated !== 1) {
 				updateTrade(trade.trade_id, { trailing_activated: 1 });
 				logger.info(`${trade.symbol} 트레일링 스탑 활성화`, { pnl_pct: pnlPct.toFixed(2) });
 			}
 
-			if (isActivated && risk.shouldTriggerTrailingStop(absPnlPct, newPeak)) {
+			if (isActivated && risk.shouldTriggerTrailingStop(pnlPct, newPeak)) {
 				exitReason = "trailing_stop";
 				logger.info(`${trade.symbol} 트레일링 스탑 트리거`, {
 					peak: newPeak.toFixed(2),
@@ -275,7 +278,7 @@ async function main() {
 	logger.info("포지션 모니터 시작", { interval: `${interval}s`, mode: once ? "once" : "continuous", strategy: strategyName });
 
 	if (once) {
-		const result = await checkPositions(hl, risk);
+		const result = await checkPositions(hl, risk, preset.trade);
 		console.log(JSON.stringify({ status: "success", ...result }, null, 2));
 		closeDb();
 		return;
@@ -318,7 +321,7 @@ async function main() {
 		}
 
 		try {
-			const result = await checkPositions(hl, risk);
+			const result = await checkPositions(hl, risk, preset.trade);
 			status.checkCount++;
 			status.closedCount += result.closed;
 			status.openPositions = result.positions - result.closed;

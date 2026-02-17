@@ -115,6 +115,12 @@ async function collectForSymbol(
       direction: direction as "binance_higher" | "binance_lower",
     },
     candles_1m: binanceData.candles,
+    candles: {
+      "1m": binanceData.candles,
+      "15m": binanceData.candles_15m,
+      "1h": binanceData.candles_1h,
+      "4h": binanceData.candles_4h,
+    },
     anomaly: anomalyResult.anomaly,
   };
 

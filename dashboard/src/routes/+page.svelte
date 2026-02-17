@@ -239,9 +239,9 @@
 		maxPos: number;
 	}
 	const STRATEGIES: StrategyInfo[] = [
-		{ name: 'conservative', label: 'Conservative', description: '보수적 · 자본 보존', leverage: '5x', risk: '2%', rr: '1.5', maxPos: 5 },
-		{ name: 'balanced', label: 'Balanced', description: '선별적 진입 · 안정 승률', leverage: '7x', risk: '3%', rr: '1.25', maxPos: 6 },
-		{ name: 'aggressive', label: 'Aggressive', description: '공격적 · 모멘텀 추종', leverage: '10x', risk: '5%', rr: '4.0', maxPos: 15 },
+		{ name: 'conservative', label: 'Conservative', description: '보수적 · 자본 보존', leverage: '3x', risk: '1.5%', rr: '2.5', maxPos: 3 },
+		{ name: 'balanced', label: 'Balanced', description: '멀티TF 합류 · 안정 승률', leverage: '5x', risk: '2%', rr: '2.0', maxPos: 4 },
+		{ name: 'aggressive', label: 'Aggressive', description: '15m 모멘텀 추종', leverage: '7x', risk: '3%', rr: '2.0', maxPos: 6 },
 	];
 	let currentStrategy: StrategyName = $state('balanced');
 	let strategyLoading = $state(false);
@@ -251,6 +251,11 @@
 	let runnerLog: string[] = $state([]);
 	let signalExpanded: string | null = $state(null);
 	let runnerActive = $derived(runnerStatus.state === 'running' || runnerStatus.state === 'idle');
+
+	// Wallet balance derived values
+	let walletTotalVal = $derived(liveBalances?.total ?? dashboard.balance?.total ?? 0);
+	let walletCbVal = $derived(liveBalances?.coinbase ?? dashboard.balance?.coinbase ?? 0);
+	let walletHlVal = $derived(liveBalances?.hyperliquid ?? dashboard.balance?.hyperliquid ?? 0);
 
 	// AI Adjustments state
 	interface AiAdjustment {
@@ -1060,7 +1065,7 @@
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 		<!-- Balance Cards (실시간 API 조회) -->
 		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-			<div class="flex items-center justify-between mb-3">
+			<div class="flex items-center justify-between mb-4">
 				<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Wallet Balances</h2>
 				{#if liveBalances}
 					<span class="flex items-center gap-1 text-[10px] text-[var(--text-secondary)]">
@@ -1069,51 +1074,91 @@
 					</span>
 				{/if}
 			</div>
-			<div class="grid grid-cols-3 gap-3">
-				<div class="bg-[var(--bg-secondary)] rounded-lg p-3 text-center">
-					<p class="text-[10px] text-[var(--accent-blue)] font-medium mb-1">Coinbase</p>
-					<p class="text-xl font-bold text-[var(--accent-blue)]">
-						{liveBalances ? `$${liveBalances.coinbase.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : dashboard.balance ? `$${dashboard.balance.coinbase.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : 'N/A'}
+
+			<!-- 총 자산 (대형) -->
+			<div class="bg-gradient-to-r from-[var(--accent-purple)]/15 to-[var(--accent-blue)]/15 border border-[var(--accent-purple)]/30 rounded-xl p-4 mb-4 text-center">
+				<p class="text-[11px] text-[var(--text-secondary)] font-medium mb-1 uppercase tracking-wider">총 자산</p>
+				<p class="text-3xl font-extrabold text-white tracking-tight">
+					${walletTotalVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+				</p>
+				{#if liveBalances}
+					<p class="text-[10px] text-[var(--text-secondary)] mt-1">
+						Coinbase + HyperLiquid
 					</p>
-					<p class="text-[10px] text-[var(--text-secondary)]">Base Network</p>
+				{/if}
+			</div>
+
+			<!-- Coinbase + HyperLiquid 내역 -->
+			<div class="space-y-2">
+				<!-- Coinbase -->
+				<div class="bg-[var(--bg-secondary)] rounded-lg p-3">
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-2">
+							<span class="w-2 h-2 rounded-full bg-[var(--accent-blue)]"></span>
+							<span class="text-xs font-semibold text-[var(--accent-blue)]">Coinbase</span>
+							<span class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-blue)]/10 text-[var(--accent-blue)]">Base</span>
+						</div>
+						<span class="text-lg font-bold text-[var(--accent-blue)]">
+							${walletCbVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+						</span>
+					</div>
+					{#if walletTotalVal > 0}
+						<div class="mt-1.5 h-1 bg-[var(--bg-card)] rounded-full overflow-hidden">
+							<div class="h-full bg-[var(--accent-blue)]/60 rounded-full" style="width: {Math.min(100, (walletCbVal / walletTotalVal) * 100)}%"></div>
+						</div>
+						<p class="text-[10px] text-[var(--text-secondary)] text-right mt-0.5">{((walletCbVal / walletTotalVal) * 100).toFixed(1)}%</p>
+					{/if}
 				</div>
-				<div class="bg-[var(--bg-secondary)] rounded-lg p-3 text-center">
-					<p class="text-[10px] text-[var(--accent-purple)] font-medium mb-1">HyperLiquid</p>
-					<p class="text-xl font-bold text-[var(--accent-purple)]">
-						{liveBalances ? `$${liveBalances.hyperliquid.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : dashboard.balance ? `$${dashboard.balance.hyperliquid.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : 'N/A'}
-					</p>
-					<p class="text-[10px] text-[var(--text-secondary)]">Arbitrum</p>
-				</div>
-				<div class="bg-[var(--bg-secondary)] rounded-lg p-3 text-center">
-					<p class="text-[10px] text-white font-medium mb-1">Total</p>
-					<p class="text-xl font-bold text-white">
-						{liveBalances ? `$${liveBalances.total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : dashboard.balance ? `$${dashboard.balance.total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : 'N/A'}
-					</p>
-					<p class="text-[10px] text-[var(--text-secondary)]">Combined</p>
+
+				<!-- HyperLiquid -->
+				<div class="bg-[var(--bg-secondary)] rounded-lg p-3">
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-2">
+							<span class="w-2 h-2 rounded-full bg-[var(--accent-purple)]"></span>
+							<span class="text-xs font-semibold text-[var(--accent-purple)]">HyperLiquid</span>
+							<span class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-purple)]/10 text-[var(--accent-purple)]">Arbitrum</span>
+						</div>
+						<span class="text-lg font-bold text-[var(--accent-purple)]">
+							${walletHlVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+						</span>
+					</div>
+					{#if walletTotalVal > 0}
+						<div class="mt-1.5 h-1 bg-[var(--bg-card)] rounded-full overflow-hidden">
+							<div class="h-full bg-[var(--accent-purple)]/60 rounded-full" style="width: {Math.min(100, (walletHlVal / walletTotalVal) * 100)}%"></div>
+						</div>
+						<p class="text-[10px] text-[var(--text-secondary)] text-right mt-0.5">{((walletHlVal / walletTotalVal) * 100).toFixed(1)}%</p>
+					{/if}
+
+					<!-- HL 상세 내역 (접이식) -->
+					{#if liveBalances?.hlDetail && (liveBalances.hlDetail.spot.length > 0 || liveBalances.hlDetail.perp > 0)}
+						<div class="mt-2 pt-2 border-t border-[var(--border)]/50 space-y-1">
+							{#if liveBalances.hlDetail.perp > 0}
+								<div class="flex justify-between text-[11px]">
+									<span class="text-[var(--text-secondary)] flex items-center gap-1">
+										<span class="w-1 h-1 rounded-full bg-[var(--accent-yellow)]"></span>
+										Perp Margin
+									</span>
+									<span class="text-[var(--accent-purple)] font-medium">${liveBalances.hlDetail.perp.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+								</div>
+							{/if}
+							{#each liveBalances.hlDetail.spot as s}
+								<div class="flex justify-between text-[11px]">
+									<span class="text-[var(--text-secondary)] flex items-center gap-1">
+										<span class="w-1 h-1 rounded-full bg-[var(--accent-green)]"></span>
+										{s.coin}
+										<span class="opacity-40 text-[10px]">{parseFloat(s.total).toLocaleString(undefined, {maximumFractionDigits: 4})}</span>
+									</span>
+									<span class="text-[var(--accent-purple)] font-medium">${s.usdValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+								</div>
+							{/each}
+						</div>
+					{/if}
 				</div>
 			</div>
-			{#if liveBalances?.hlDetail && (liveBalances.hlDetail.spot.length > 0 || liveBalances.hlDetail.perp > 0)}
-				<div class="mt-3 border-t border-[var(--border)] pt-3">
-					<p class="text-[10px] text-[var(--text-secondary)] font-medium mb-2 uppercase tracking-wider">HyperLiquid 상세</p>
-					<div class="space-y-1">
-						{#if liveBalances.hlDetail.perp > 0}
-							<div class="flex justify-between text-xs">
-								<span class="text-[var(--text-secondary)]">Perp Margin</span>
-								<span class="text-[var(--accent-purple)] font-medium">${liveBalances.hlDetail.perp.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-							</div>
-						{/if}
-						{#each liveBalances.hlDetail.spot as s}
-							<div class="flex justify-between text-xs">
-								<span class="text-[var(--text-secondary)]">{s.coin} <span class="opacity-50">{s.total}</span></span>
-								<span class="text-[var(--accent-purple)] font-medium">${s.usdValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-							</div>
-						{/each}
-					</div>
-				</div>
-			{/if}
+
 			{#if liveBalances}
-				<p class="text-[10px] text-[var(--text-secondary)] mt-2 text-right">
-					Updated: {new Date(liveBalances.timestamp).toLocaleTimeString('ko-KR')}
+				<p class="text-[10px] text-[var(--text-secondary)] mt-3 text-right">
+					{new Date(liveBalances.timestamp).toLocaleTimeString('ko-KR')} 기준
 				</p>
 			{/if}
 		</div>
@@ -1230,7 +1275,7 @@
 		<KpiCard label="Today PnL" value={`${pnlSign}$${dashboard.todayPnl.toFixed(2)}`} color={pnlColor} sub={`Fees: $${dashboard.todayFees.toFixed(2)}`} />
 		<KpiCard label="Win Rate" value={`${dashboard.winRate}%`} color={dashboard.winRate >= 50 ? 'green' : 'red'} sub={`${dashboard.todayTradeCount} trades today`} />
 		<KpiCard label="Open Positions" value={String(dashboard.openPositionCount)} color="blue" />
-		<KpiCard label="Total Balance" value={liveBalances ? `$${liveBalances.total.toLocaleString(undefined, {minimumFractionDigits: 2})}` : dashboard.balance ? `$${dashboard.balance.total.toLocaleString(undefined, {minimumFractionDigits: 2})}` : 'N/A'} color="purple" sub={liveBalances ? `CB: $${liveBalances.coinbase.toFixed(0)} | HL: $${liveBalances.hyperliquid.toFixed(0)}` : dashboard.balance ? `CB: $${dashboard.balance.coinbase.toFixed(0)} | HL: $${dashboard.balance.hyperliquid.toFixed(0)}` : ''} />
+		<KpiCard label="총 자산" value={liveBalances ? `$${liveBalances.total.toLocaleString(undefined, {minimumFractionDigits: 2})}` : dashboard.balance ? `$${dashboard.balance.total.toLocaleString(undefined, {minimumFractionDigits: 2})}` : 'N/A'} color="purple" sub={liveBalances ? `CB $${liveBalances.coinbase.toFixed(0)} + HL $${liveBalances.hyperliquid.toFixed(0)}` : dashboard.balance ? `CB $${dashboard.balance.coinbase.toFixed(0)} + HL $${dashboard.balance.hyperliquid.toFixed(0)}` : ''} />
 	</div>
 
 	<!-- ═══════════ AI 분석 판단 + 거래 활동 로그 ═══════════ -->

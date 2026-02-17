@@ -54,9 +54,48 @@ export function isDaemonRunning(): boolean {
 	}
 }
 
+/** OpenClaw 데몬 자동 시작 (꺼져 있으면 시작 후 대기) */
+export function startDaemon(): boolean {
+	const bin = getOpenClawPath();
+	if (!bin) return false;
+
+	if (isDaemonRunning()) return true;
+
+	try {
+		const proc = Bun.spawnSync([bin, 'daemon', 'start'], {
+			stdout: 'pipe',
+			stderr: 'pipe',
+			timeout: 15_000,
+		});
+		if (proc.exitCode !== 0) {
+			const err = new TextDecoder().decode(proc.stderr).trim();
+			console.error(`[OpenClaw] daemon start 실패: ${err}`);
+			return false;
+		}
+
+		// 데몬이 뜰 때까지 최대 10초 대기
+		for (let i = 0; i < 20; i++) {
+			Bun.sleepSync(500);
+			if (isDaemonRunning()) return true;
+		}
+		console.error('[OpenClaw] daemon start 후 10초 대기했으나 미응답');
+		return false;
+	} catch (err) {
+		console.error('[OpenClaw] daemon start 예외:', err);
+		return false;
+	}
+}
+
 /** OpenClaw가 사용 가능한지 (바이너리 + 데몬) */
 export function isOpenClawReady(): boolean {
 	return getOpenClawPath() !== null && isDaemonRunning();
+}
+
+/** OpenClaw를 사용 가능하게 만든다 (데몬 자동 시작 포함) */
+export function ensureOpenClawReady(): boolean {
+	if (isOpenClawReady()) return true;
+	if (!getOpenClawPath()) return false;
+	return startDaemon();
 }
 
 export interface OpenClawResult {

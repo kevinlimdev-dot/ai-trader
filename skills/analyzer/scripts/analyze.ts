@@ -1,6 +1,14 @@
 /**
- * analyzer 스킬 스크립트
- * 가격 스냅샷을 분석하여 매매 시그널(LONG/SHORT/HOLD)을 생성한다.
+ * analyzer 스킬 스크립트 (v2 — 멀티타임프레임)
+ *
+ * 4개 타임프레임(1m, 15m, 1h, 4h) 캔들을 활용하여
+ * 지표별 최적 타임프레임에서 분석하고, 가중 복합 스코어로 매매 시그널을 생성한다.
+ *
+ * 타임프레임별 역할:
+ *   4h  → 상위 추세 방향 (MA, MACD)
+ *   1h  → 중기 과매수/과매도 (RSI, Bollinger)
+ *   15m → 진입 타이밍 (MACD 크로스, 모멘텀)
+ *   1m  → 스프레드 분석 (바이낸스-HL 가격 차이)
  *
  * 사용법:
  *   bun run skills/analyzer/scripts/analyze.ts
@@ -8,13 +16,13 @@
 
 import { resolve } from "path";
 import { existsSync, readFileSync } from "fs";
-import { RSI, MACD, BollingerBands, SMA, ATR } from "technicalindicators";
+import { RSI, MACD, BollingerBands, SMA, EMA, ATR } from "technicalindicators";
 import { loadConfig, getProjectRoot, getStrategy } from "../../../src/utils/config";
 import { createLogger } from "../../../src/utils/logger";
 import { atomicWrite } from "../../../src/utils/file";
 import { getClosePrices, getLastSignalTime, closeDb } from "../../../src/db/repository";
 import { getStrategyPreset, type AnalysisOverrides } from "../../../src/strategies/presets";
-import type { SnapshotCollection, PriceSnapshot } from "../../../src/models/price-snapshot";
+import type { SnapshotCollection, PriceSnapshot, CandleData } from "../../../src/models/price-snapshot";
 import type {
   TradeSignal,
   SignalCollection,
@@ -24,8 +32,42 @@ import type {
 
 const logger = createLogger("Analyzer");
 
-// ─── Strategy Overrides (initialized in main) ───
 let strategyOverrides: AnalysisOverrides | null = null;
+
+/** AI 조정값 (data/ai-adjustments.json) */
+interface AiAdjustments {
+  timestamp?: string;
+  reason?: string;
+  adjustments?: {
+    entry_threshold?: { from: number; to: number };
+    min_confidence?: { from: number; to: number };
+    weights?: Record<string, { from: number; to: number }>;
+  };
+  market_condition?: string;
+  action_taken?: string;
+}
+
+let aiAdjustments: AiAdjustments | null = null;
+
+function loadAiAdjustments(root: string): AiAdjustments | null {
+  const filePath = resolve(root, "data/ai-adjustments.json");
+  if (!existsSync(filePath)) return null;
+  try {
+    const raw = readFileSync(filePath, "utf-8");
+    const data: AiAdjustments = JSON.parse(raw);
+    // 1시간 이내의 조정값만 적용
+    if (data.timestamp) {
+      const age = Date.now() - new Date(data.timestamp).getTime();
+      if (age > 60 * 60 * 1000) {
+        logger.debug("AI 조정값이 1시간 경과하여 무시합니다");
+        return null;
+      }
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 // ─── Graceful Shutdown ───
 function setupGracefulShutdown(): void {
@@ -34,17 +76,24 @@ function setupGracefulShutdown(): void {
   process.on("SIGTERM", cleanup);
 }
 
-// ─── Score Map ───
+// ─── Score Map (BIAS를 0.5로 차별화) ───
 
 const SCORE_MAP: Record<string, number> = {
   STRONG_LONG: 2,
   LONG: 1,
-  LONG_BIAS: 1,
+  LONG_BIAS: 0.5,
   NEUTRAL: 0,
-  SHORT_BIAS: -1,
+  SHORT_BIAS: -0.5,
   SHORT: -1,
   STRONG_SHORT: -2,
 };
+
+// ─── 캔들에서 closes 추출 ───
+
+function getCandleCloses(candles: CandleData[] | undefined): number[] {
+  if (!candles || candles.length === 0) return [];
+  return candles.map((c) => c.close);
+}
 
 // ─── Cooldown Check ───
 
@@ -61,115 +110,143 @@ function isInCooldown(symbol: string, cooldownSeconds: number): boolean {
   return false;
 }
 
-// ─── Indicator Analysis ───
+// ─── Indicator Analysis (멀티타임프레임) ───
 
+/** 스프레드: 실시간 (타임프레임 무관) — 전략 preset > config 우선순위 */
 function analyzeSpread(snapshot: PriceSnapshot): IndicatorSignal {
   const config = loadConfig();
   const pct = snapshot.spread.percentage;
   const dir = snapshot.spread.direction;
 
-  if (pct < 0.001) return "NEUTRAL";
+  const thresholdHigh = strategyOverrides?.spread?.threshold_high ?? config.analysis_agent.spread.threshold_high;
+  const thresholdExtreme = strategyOverrides?.spread?.threshold_extreme ?? config.analysis_agent.spread.threshold_extreme;
+
+  if (pct < 0.0003) return "NEUTRAL"; // 0.03% 미만은 무의미
 
   if (dir === "binance_higher") {
-    if (pct >= config.analysis_agent.spread.threshold_extreme) return "STRONG_LONG";
-    if (pct >= config.analysis_agent.spread.threshold_high) return "LONG";
-    return "LONG_BIAS";
+    if (pct >= thresholdExtreme) return "STRONG_LONG";
+    if (pct >= thresholdHigh) return "LONG";
+    if (pct >= thresholdHigh * 0.5) return "LONG_BIAS";
+    return "NEUTRAL";
   } else {
-    if (pct >= config.analysis_agent.spread.threshold_extreme) return "STRONG_SHORT";
-    if (pct >= config.analysis_agent.spread.threshold_high) return "SHORT";
-    return "SHORT_BIAS";
+    if (pct >= thresholdExtreme) return "STRONG_SHORT";
+    if (pct >= thresholdHigh) return "SHORT";
+    if (pct >= thresholdHigh * 0.5) return "SHORT_BIAS";
+    return "NEUTRAL";
   }
 }
 
-function analyzeRSI(closes: number[]): { value: number; signal: IndicatorSignal } {
+/** RSI: 1h 타임프레임 (중기 과매수/과매도) */
+function analyzeRSI(closes1h: number[], closes15m: number[]): { value: number; value_15m: number; signal: IndicatorSignal } {
   const config = loadConfig();
   const period = config.analysis_agent.indicators.rsi.period;
-
-  if (closes.length < period + 1) {
-    return { value: 50, signal: "NEUTRAL" };
-  }
-
-  const rsiValues = RSI.calculate({ values: closes, period });
-  const value = rsiValues[rsiValues.length - 1] ?? 50;
 
   const overbought = strategyOverrides?.rsi.overbought ?? config.analysis_agent.indicators.rsi.overbought;
   const oversold = strategyOverrides?.rsi.oversold ?? config.analysis_agent.indicators.rsi.oversold;
 
-  let signal: IndicatorSignal = "NEUTRAL";
-  if (value <= oversold) signal = "LONG";
-  else if (value >= overbought) signal = "SHORT";
+  // 1h RSI (주 판단)
+  let value1h = 50;
+  if (closes1h.length >= period + 1) {
+    const rsiValues = RSI.calculate({ values: closes1h, period });
+    value1h = rsiValues[rsiValues.length - 1] ?? 50;
+  }
 
-  return { value, signal };
+  // 15m RSI (보조 확인)
+  let value15m = 50;
+  if (closes15m.length >= period + 1) {
+    const rsiValues = RSI.calculate({ values: closes15m, period });
+    value15m = rsiValues[rsiValues.length - 1] ?? 50;
+  }
+
+  let signal: IndicatorSignal = "NEUTRAL";
+
+  // 1h + 15m 동시 과매수/과매도일 때 강한 시그널
+  if (value1h <= oversold && value15m <= oversold + 5) signal = "STRONG_LONG";
+  else if (value1h <= oversold) signal = "LONG";
+  else if (value1h >= overbought && value15m >= overbought - 5) signal = "STRONG_SHORT";
+  else if (value1h >= overbought) signal = "SHORT";
+  else if (value1h <= oversold + 5) signal = "LONG_BIAS";
+  else if (value1h >= overbought - 5) signal = "SHORT_BIAS";
+
+  return { value: value1h, value_15m: value15m, signal };
 }
 
-function analyzeMACD(closes: number[]): { histogram: number; macdLine: number; signalLine: number; signal: IndicatorSignal } {
+/** MACD: 4h(추세) + 15m(타이밍) 듀얼 타임프레임 */
+function analyzeMACD(
+  closes4h: number[],
+  closes15m: number[],
+): { histogram_4h: number; histogram_15m: number; signal: IndicatorSignal } {
   const config = loadConfig();
   const { fast, slow, signal: sigPeriod } = config.analysis_agent.indicators.macd;
 
-  if (closes.length < slow + sigPeriod) {
-    return { histogram: 0, macdLine: 0, signalLine: 0, signal: "NEUTRAL" };
-  }
+  const calcMACD = (closes: number[]) => {
+    if (closes.length < slow + sigPeriod) return null;
+    const result = MACD.calculate({
+      values: closes,
+      fastPeriod: fast,
+      slowPeriod: slow,
+      signalPeriod: sigPeriod,
+      SimpleMAOscillator: false,
+      SimpleMASignal: false,
+    });
+    const latest = result[result.length - 1];
+    const prev = result.length > 1 ? result[result.length - 2] : null;
+    return { latest, prev };
+  };
 
-  const macdResult = MACD.calculate({
-    values: closes,
-    fastPeriod: fast,
-    slowPeriod: slow,
-    signalPeriod: sigPeriod,
-    SimpleMAOscillator: false,
-    SimpleMASignal: false,
-  });
+  const macd4h = calcMACD(closes4h);
+  const macd15m = calcMACD(closes15m);
 
-  const latest = macdResult[macdResult.length - 1];
-  const prev = macdResult.length > 1 ? macdResult[macdResult.length - 2] : null;
-
-  if (!latest || latest.histogram === undefined) {
-    return { histogram: 0, macdLine: 0, signalLine: 0, signal: "NEUTRAL" };
-  }
+  const h4h = macd4h?.latest?.histogram ?? 0;
+  const h15m = macd15m?.latest?.histogram ?? 0;
 
   let signal: IndicatorSignal = "NEUTRAL";
 
-  // 골든크로스 / 데드크로스
-  if (prev && prev.histogram !== undefined) {
-    if (prev.histogram < 0 && latest.histogram > 0) signal = "LONG";
-    else if (prev.histogram > 0 && latest.histogram < 0) signal = "SHORT";
-    else if (latest.histogram > 0) signal = "LONG_BIAS";
-    else if (latest.histogram < 0) signal = "SHORT_BIAS";
-  }
+  // 4h 추세 방향 확인
+  const trend4h = h4h > 0 ? "bull" : h4h < 0 ? "bear" : "flat";
 
-  return {
-    histogram: latest.histogram,
-    macdLine: latest.MACD ?? 0,
-    signalLine: latest.signal ?? 0,
-    signal,
-  };
+  // 15m 크로스 확인
+  const prev15m = macd15m?.prev?.histogram ?? 0;
+  const cross15m = prev15m < 0 && h15m > 0 ? "golden" : prev15m > 0 && h15m < 0 ? "death" : "none";
+
+  // 4h 추세 + 15m 크로스 합류
+  if (trend4h === "bull" && cross15m === "golden") signal = "STRONG_LONG";
+  else if (trend4h === "bull" && h15m > 0) signal = "LONG";
+  else if (trend4h === "bear" && cross15m === "death") signal = "STRONG_SHORT";
+  else if (trend4h === "bear" && h15m < 0) signal = "SHORT";
+  else if (cross15m === "golden") signal = "LONG_BIAS";
+  else if (cross15m === "death") signal = "SHORT_BIAS";
+  else if (h4h > 0 && h15m > 0) signal = "LONG_BIAS";
+  else if (h4h < 0 && h15m < 0) signal = "SHORT_BIAS";
+
+  return { histogram_4h: h4h, histogram_15m: h15m, signal };
 }
 
-function analyzeBollinger(closes: number[]): {
+/** Bollinger Bands: 1h 타임프레임 */
+function analyzeBollinger(closes1h: number[]): {
   upper: number;
   middle: number;
   lower: number;
+  bandwidth: number;
   position: "above" | "upper" | "middle" | "lower" | "below";
   signal: IndicatorSignal;
 } {
   const config = loadConfig();
   const { period, std_dev } = config.analysis_agent.indicators.bollinger;
 
-  if (closes.length < period) {
-    return { upper: 0, middle: 0, lower: 0, position: "middle", signal: "NEUTRAL" };
+  if (closes1h.length < period) {
+    return { upper: 0, middle: 0, lower: 0, bandwidth: 0, position: "middle", signal: "NEUTRAL" };
   }
 
-  const bb = BollingerBands.calculate({
-    values: closes,
-    period,
-    stdDev: std_dev,
-  });
-
+  const bb = BollingerBands.calculate({ values: closes1h, period, stdDev: std_dev });
   const latest = bb[bb.length - 1];
   if (!latest) {
-    return { upper: 0, middle: 0, lower: 0, position: "middle", signal: "NEUTRAL" };
+    return { upper: 0, middle: 0, lower: 0, bandwidth: 0, position: "middle", signal: "NEUTRAL" };
   }
 
-  const currentPrice = closes[closes.length - 1];
+  const currentPrice = closes1h[closes1h.length - 1];
+  const bandwidth = latest.middle > 0 ? (latest.upper - latest.lower) / latest.middle : 0;
+
   let position: "above" | "upper" | "middle" | "lower" | "below";
   let signal: IndicatorSignal;
 
@@ -190,38 +267,59 @@ function analyzeBollinger(closes: number[]): {
     signal = "NEUTRAL";
   }
 
-  return { upper: latest.upper, middle: latest.middle, lower: latest.lower, position, signal };
+  // 볼린저밴드 수축 시 변동성 확대 임박 → NEUTRAL (방향 불확실)
+  if (bandwidth < 0.02) {
+    signal = "NEUTRAL";
+  }
+
+  return { upper: latest.upper, middle: latest.middle, lower: latest.lower, bandwidth, position, signal };
 }
 
-function analyzeMA(closes: number[]): {
+/** 이동평균: 4h 타임프레임 (장기 추세 판단) */
+function analyzeMA(closes4h: number[], closes1h: number[]): {
   ma7: number;
   ma25: number;
   ma99: number;
+  ema21_1h: number;
   signal: IndicatorSignal;
 } {
   const config = loadConfig();
   const { short: s, medium: m, long: l } = config.analysis_agent.indicators.ma;
 
-  const ma7 = closes.length >= s ? SMA.calculate({ values: closes, period: s }).pop() ?? 0 : 0;
-  const ma25 = closes.length >= m ? SMA.calculate({ values: closes, period: m }).pop() ?? 0 : 0;
-  const ma99 = closes.length >= l ? SMA.calculate({ values: closes, period: l }).pop() ?? 0 : 0;
+  // 4h MA (장기 추세)
+  const ma7 = closes4h.length >= s ? SMA.calculate({ values: closes4h, period: s }).pop() ?? 0 : 0;
+  const ma25 = closes4h.length >= m ? SMA.calculate({ values: closes4h, period: m }).pop() ?? 0 : 0;
+  const ma99 = closes4h.length >= l ? SMA.calculate({ values: closes4h, period: l }).pop() ?? 0 : 0;
 
-  if (ma7 === 0 || ma25 === 0 || ma99 === 0) {
-    return { ma7, ma25, ma99, signal: "NEUTRAL" };
+  // 1h EMA21 (중기 추세 보조)
+  const ema21_1h = closes1h.length >= 21 ? EMA.calculate({ values: closes1h, period: 21 }).pop() ?? 0 : 0;
+  const currentPrice = closes1h.length > 0 ? closes1h[closes1h.length - 1] : 0;
+
+  if (ma7 === 0 || ma25 === 0) {
+    return { ma7, ma25, ma99, ema21_1h, signal: "NEUTRAL" };
   }
 
   let signal: IndicatorSignal;
 
-  if (ma7 > ma25 && ma25 > ma99) signal = "STRONG_LONG";
-  else if (ma7 > ma25) signal = "LONG";
-  else if (ma7 < ma25 && ma25 < ma99) signal = "STRONG_SHORT";
-  else if (ma7 < ma25) signal = "SHORT";
+  // 4h MA 정렬 + 1h 가격이 EMA21 위/아래
+  const maAligned = ma7 > ma25 && (ma99 === 0 || ma25 > ma99);
+  const maAlignedDown = ma7 < ma25 && (ma99 === 0 || ma25 < ma99);
+  const priceAboveEma = ema21_1h > 0 && currentPrice > ema21_1h;
+  const priceBelowEma = ema21_1h > 0 && currentPrice < ema21_1h;
+
+  if (maAligned && priceAboveEma) signal = "STRONG_LONG";
+  else if (maAligned) signal = "LONG";
+  else if (maAlignedDown && priceBelowEma) signal = "STRONG_SHORT";
+  else if (maAlignedDown) signal = "SHORT";
+  else if (ma7 > ma25) signal = "LONG_BIAS";
+  else if (ma7 < ma25) signal = "SHORT_BIAS";
   else signal = "NEUTRAL";
 
-  return { ma7, ma25, ma99, signal };
+  return { ma7, ma25, ma99, ema21_1h, signal };
 }
 
-function calculateATR(candles: { high: number; low: number; close: number }[], period: number): number {
+/** ATR: 1h 타임프레임 (변동성 기반 SL/TP에 적합) */
+function calculateATR(candles: CandleData[], period: number): number {
   if (candles.length < period + 1) return 0;
 
   const result = ATR.calculate({
@@ -255,28 +353,37 @@ function computeCompositeScore(
 
   if (totalWeight === 0) return 0;
 
-  // 정규화: -1 ~ 1
   const maxScore = 2; // STRONG_LONG = 2
   return totalScore / (maxScore * totalWeight);
 }
 
-// ─── Main Analysis ───
+// ─── Main Analysis (멀티타임프레임) ───
 
 function analyzeSymbol(snapshot: PriceSnapshot, historicalCloses: number[]): TradeSignal {
   const config = loadConfig();
 
-  // 캔들에서 close 데이터 추가
-  const closes =
-    snapshot.candles_1m && snapshot.candles_1m.length > 0
-      ? snapshot.candles_1m.map((c) => c.close)
-      : historicalCloses;
+  // 멀티타임프레임 캔들 추출
+  const candles1m = snapshot.candles?.["1m"] || snapshot.candles_1m || [];
+  const candles15m = snapshot.candles?.["15m"] || [];
+  const candles1h = snapshot.candles?.["1h"] || [];
+  const candles4h = snapshot.candles?.["4h"] || [];
 
-  // 각 지표 분석
+  const closes1m = getCandleCloses(candles1m.length > 0 ? candles1m : undefined) || historicalCloses;
+  const closes15m = getCandleCloses(candles15m.length > 0 ? candles15m : undefined);
+  const closes1h = getCandleCloses(candles1h.length > 0 ? candles1h : undefined);
+  const closes4h = getCandleCloses(candles4h.length > 0 ? candles4h : undefined);
+
+  // 폴백: 멀티타임프레임이 없으면 1m 사용 (레거시 호환)
+  const effectiveCloses15m = closes15m.length >= 30 ? closes15m : closes1m;
+  const effectiveCloses1h = closes1h.length >= 30 ? closes1h : closes15m.length >= 30 ? closes15m : closes1m;
+  const effectiveCloses4h = closes4h.length >= 30 ? closes4h : closes1h.length >= 30 ? closes1h : closes1m;
+
+  // 각 지표별 최적 타임프레임에서 분석
   const spreadSignal = analyzeSpread(snapshot);
-  const rsi = analyzeRSI(closes);
-  const macd = analyzeMACD(closes);
-  const bollinger = analyzeBollinger(closes);
-  const ma = analyzeMA(closes);
+  const rsi = analyzeRSI(effectiveCloses1h, effectiveCloses15m);
+  const macd = analyzeMACD(effectiveCloses4h, effectiveCloses15m);
+  const bollinger = analyzeBollinger(effectiveCloses1h);
+  const ma = analyzeMA(effectiveCloses4h, effectiveCloses1h);
 
   // 복합 점수
   const signals: Record<string, IndicatorSignal> = {
@@ -296,15 +403,18 @@ function analyzeSymbol(snapshot: PriceSnapshot, historicalCloses: number[]): Tra
   if (compositeScore >= threshold) action = "LONG";
   else if (compositeScore <= -threshold) action = "SHORT";
 
-  // ATR 기반 손절/익절
-  const candles = snapshot.candles_1m || [];
-  const atr = candles.length > 0
-    ? calculateATR(candles, config.analysis_agent.risk.atr_period)
-    : Math.abs(snapshot.binance.mark_price * 0.005); // fallback: 0.5%
+  // ATR: 1h 캔들 기반 (더 안정적인 변동성 측정)
+  const atrCandles = candles1h.length > 0 ? candles1h : candles15m.length > 0 ? candles15m : candles1m;
+  const atr = atrCandles.length > 0
+    ? calculateATR(atrCandles, config.analysis_agent.risk.atr_period)
+    : Math.abs(snapshot.binance.mark_price * 0.005);
 
   const entryPrice = snapshot.hyperliquid.mid_price;
-  const slMult = config.analysis_agent.risk.stop_loss_multiplier;
-  const tpMult = config.analysis_agent.risk.take_profit_multiplier;
+
+  // 전략 프리셋의 ATR multiplier 우선 사용, 없으면 config.yaml 폴백
+  const preset = getStrategyPreset(getStrategy());
+  const slMult = preset.trade.stopLoss.atr_multiplier ?? config.analysis_agent.risk.stop_loss_multiplier;
+  const tpMult = preset.trade.takeProfit.atr_multiplier ?? config.analysis_agent.risk.take_profit_multiplier;
 
   let stopLoss: number;
   let takeProfit: number;
@@ -331,9 +441,9 @@ function analyzeSymbol(snapshot: PriceSnapshot, historicalCloses: number[]): Tra
     },
     rsi: { value: rsi.value, signal: rsi.signal },
     macd: {
-      histogram: macd.histogram,
-      macd_line: macd.macdLine,
-      signal_line: macd.signalLine,
+      histogram: macd.histogram_15m,
+      macd_line: macd.histogram_4h,
+      signal_line: 0,
       signal: macd.signal,
     },
     bollinger: {
@@ -370,19 +480,49 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const root = getProjectRoot();
 
-  // 전략 프리셋 로드
   const strategyName = getStrategy();
   const preset = getStrategyPreset(strategyName);
-  strategyOverrides = preset.analysis;
+  strategyOverrides = { ...preset.analysis };
+
+  // AI 조정값 로드 및 머지 (preset 위에 덮어쓰기)
+  aiAdjustments = loadAiAdjustments(root);
+  if (aiAdjustments?.adjustments) {
+    const adj = aiAdjustments.adjustments;
+    if (adj.entry_threshold?.to !== undefined) {
+      strategyOverrides = {
+        ...strategyOverrides,
+        signal: { ...strategyOverrides.signal, entry_threshold: adj.entry_threshold.to },
+      };
+      logger.info(`AI 조정 적용: entry_threshold ${adj.entry_threshold.from} → ${adj.entry_threshold.to}`);
+    }
+    if (adj.min_confidence?.to !== undefined) {
+      strategyOverrides = {
+        ...strategyOverrides,
+        signal: { ...strategyOverrides.signal, min_confidence: adj.min_confidence.to },
+      };
+      logger.info(`AI 조정 적용: min_confidence ${adj.min_confidence.from} → ${adj.min_confidence.to}`);
+    }
+    if (adj.weights) {
+      const mergedWeights = { ...strategyOverrides.weights };
+      for (const [key, val] of Object.entries(adj.weights)) {
+        if (val.to !== undefined) {
+          (mergedWeights as any)[key] = val.to;
+          logger.info(`AI 조정 적용: weight.${key} ${val.from} → ${val.to}`);
+        }
+      }
+      strategyOverrides = { ...strategyOverrides, weights: mergedWeights };
+    }
+    logger.info(`AI 조정값 머지 완료 (사유: ${aiAdjustments.reason || "N/A"})`);
+  }
+
   logger.info(`전략 프리셋 적용: ${preset.label} (${preset.name})`, {
-    entry_threshold: preset.analysis.signal.entry_threshold,
-    rsi: `${preset.analysis.rsi.oversold}-${preset.analysis.rsi.overbought}`,
-    weights: JSON.stringify(preset.analysis.weights),
+    entry_threshold: strategyOverrides.signal.entry_threshold,
+    rsi: `${strategyOverrides.rsi.oversold}-${strategyOverrides.rsi.overbought}`,
+    weights: JSON.stringify(strategyOverrides.weights),
   });
 
   const snapshotPath = resolve(root, "data/snapshots/latest.json");
 
-  // 스냅샷 읽기
   if (!existsSync(snapshotPath)) {
     console.error(JSON.stringify({
       status: "error",
@@ -394,7 +534,6 @@ async function main(): Promise<void> {
   const raw = readFileSync(snapshotPath, "utf-8");
   const collection: SnapshotCollection = JSON.parse(raw);
 
-  // 신선도 체크 (5분 이상 오래된 데이터는 경고)
   const age = Date.now() - new Date(collection.collected_at).getTime();
   if (age > 5 * 60 * 1000) {
     logger.warn("스냅샷이 5분 이상 오래되었습니다", { age_seconds: Math.floor(age / 1000) });
@@ -405,10 +544,8 @@ async function main(): Promise<void> {
   const skippedCooldown: string[] = [];
 
   for (const snapshot of collection.snapshots) {
-    // 쿨다운 체크
     if (isInCooldown(snapshot.symbol, cooldownSeconds)) {
       skippedCooldown.push(snapshot.symbol);
-      // 쿨다운 중에는 HOLD 시그널 생성
       signals.push({
         timestamp: new Date().toISOString(),
         symbol: snapshot.symbol,
@@ -430,9 +567,7 @@ async function main(): Promise<void> {
       continue;
     }
 
-    // DB에서 이력 데이터 가져오기 (캔들이 없는 경우)
     const historicalCloses = getClosePrices(snapshot.symbol, 100);
-
     const signal = analyzeSymbol(snapshot, historicalCloses);
     signals.push(signal);
 
@@ -441,10 +576,10 @@ async function main(): Promise<void> {
       confidence: signal.confidence.toFixed(2),
       composite: signal.analysis.composite_score.toFixed(3),
       spread: `${(signal.analysis.spread.value_pct * 100).toFixed(4)}%`,
+      timeframes: `4h:${snapshot.candles?.["4h"]?.length ?? 0} 1h:${snapshot.candles?.["1h"]?.length ?? 0} 15m:${snapshot.candles?.["15m"]?.length ?? 0}`,
     });
   }
 
-  // 시그널 파일 저장
   const signalCollection: SignalCollection = {
     generated_at: new Date().toISOString(),
     signals,
@@ -453,7 +588,6 @@ async function main(): Promise<void> {
   const signalPath = resolve(root, "data/signals/latest.json");
   await atomicWrite(signalPath, signalCollection);
 
-  // stdout 결과
   const result = {
     status: "success",
     analyzed: signals.length,

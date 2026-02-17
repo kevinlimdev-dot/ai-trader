@@ -12,7 +12,7 @@ import { resolve } from "path";
 import { existsSync, readFileSync } from "fs";
 import { getProjectRoot, loadConfig, getStrategy } from "../../../src/utils/config";
 import { getStrategyPreset } from "../../../src/strategies/presets";
-import { getOpenTrades, closeDb } from "../../../src/db/repository";
+import { getOpenTrades, getRecentClosedTrades, getPerformanceStats, closeDb } from "../../../src/db/repository";
 
 const root = getProjectRoot();
 
@@ -48,18 +48,45 @@ async function main() {
     }
   }
 
-  // 5. 요약 생성
+  // 5. 과거 성과 데이터
+  const perfStats = getPerformanceStats(7);
+  const recentTrades = getRecentClosedTrades(20);
+
+  // 최근 5거래의 간략한 결과
+  const recentTradesSummary = recentTrades.slice(0, 10).map((t) => ({
+    symbol: t.symbol,
+    side: t.side,
+    pnl: t.pnl ? parseFloat(t.pnl.toFixed(2)) : 0,
+    pnl_pct: t.pnl_pct ? parseFloat(t.pnl_pct.toFixed(2)) : 0,
+    exit_reason: t.exit_reason || "unknown",
+    hold_time_min: t.timestamp_close && t.timestamp_open
+      ? Math.round((new Date(t.timestamp_close).getTime() - new Date(t.timestamp_open).getTime()) / 60000)
+      : 0,
+  }));
+
+  // 6. 요약 생성
   const activeSignals = signals.signals.filter((s: any) => s.action !== "HOLD");
   const holdSignals = signals.signals.filter((s: any) => s.action === "HOLD");
 
   const summary: any = {
     _instruction: `너는 자율적인 AI 투자 판단자야. 아래 데이터를 종합 분석하고 독립적으로 투자 결정을 내려.
-기술적 지표뿐 아니라 시장 심리(market_sentiment)도 반드시 고려해.
-- 군중이 한 방향에 치우쳐 있으면 역발상 진입을 고려해 (contrarian)
-- 스마트 머니(탑 트레이더)의 방향에 가중치를 둬
-- 펀딩비가 극단적이면 반대 방향 포지션이 유리할 수 있어
-- OI가 높으면서 가격이 떨어지면 숏 스퀴즈 가능성을 고려해
-- 테이커 매수/매도 압력으로 단기 모멘텀을 판단해
+
+[분석 원칙]
+1. 멀티타임프레임 합류: 4h 추세 방향과 15m 진입 타이밍이 일치할 때만 진입
+2. 기술적 지표 + 시장 심리를 반드시 교차 확인
+3. 군중이 한 방향에 치우쳐 있으면 역발상 진입 (contrarian)
+4. 스마트 머니(탑 트레이더) 방향에 가중치
+5. 펀딩비가 극단적이면 반대 방향 포지션이 유리
+6. OI가 높으면서 가격이 떨어지면 숏 스퀴즈 가능성 고려
+7. 테이커 매수/매도 압력으로 단기 모멘텀 판단
+
+[과거 성과 기반 판단]
+- 최근 7일 승률과 실적 데이터(historical_performance)를 반드시 참고해
+- 연패 중이면 포지션 수/규모를 줄여
+- 특정 코인에서 반복적으로 손실이 나면 해당 코인은 HOLD 처리
+- 롱/숏 중 한쪽에서만 손실이 크면 해당 방향 진입에 더 높은 확신 요구
+- 승률이 40% 미만이면 진입 기준을 더 보수적으로 적용
+
 결정은 apply-decision.ts로 적용한다.`,
     strategy: {
       name: strategyName,
@@ -67,7 +94,7 @@ async function main() {
       leverage: preset.trade.leverage.default,
       risk_per_trade: preset.trade.risk.risk_per_trade,
       max_positions: preset.trade.risk.max_concurrent_positions,
-      entry_threshold: preset.analysis.entry_threshold,
+      entry_threshold: preset.analysis.signal.entry_threshold,
     },
     account: {
       open_positions: openTrades.length,
@@ -96,6 +123,26 @@ async function main() {
         };
       })(),
     } : { note: "시장 심리 데이터 없음. collect-sentiment.ts를 먼저 실행하세요." },
+    historical_performance: {
+      period: "최근 7일",
+      total_trades: perfStats.total_trades,
+      win_rate: parseFloat((perfStats.win_rate * 100).toFixed(1)) + "%",
+      total_pnl: parseFloat(perfStats.total_pnl.toFixed(2)),
+      avg_pnl_per_trade: parseFloat(perfStats.avg_pnl.toFixed(2)),
+      avg_win: parseFloat(perfStats.avg_win.toFixed(2)),
+      avg_loss: parseFloat(perfStats.avg_loss.toFixed(2)),
+      max_win: parseFloat(perfStats.max_win.toFixed(2)),
+      max_loss: parseFloat(perfStats.max_loss.toFixed(2)),
+      avg_hold_time_min: Math.round(perfStats.avg_hold_time_min),
+      consecutive_losses: perfStats.consecutive_losses,
+      pnl_by_side: {
+        long: { count: perfStats.pnl_by_side.long_count, pnl: parseFloat(perfStats.pnl_by_side.long_pnl.toFixed(2)) },
+        short: { count: perfStats.pnl_by_side.short_count, pnl: parseFloat(perfStats.pnl_by_side.short_pnl.toFixed(2)) },
+      },
+      best_symbols: perfStats.best_symbols.map((s) => `${s.symbol}(${s.count}회, $${s.pnl.toFixed(2)})`),
+      worst_symbols: perfStats.worst_symbols.map((s) => `${s.symbol}(${s.count}회, $${s.pnl.toFixed(2)})`),
+      recent_trades: recentTradesSummary,
+    },
     analysis_time: signals.generated_at,
     candidates: activeSignals.map((s: any) => {
       const snap = snapshots?.snapshots?.find((sp: any) => sp.symbol === s.symbol);

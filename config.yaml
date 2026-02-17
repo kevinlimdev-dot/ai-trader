@@ -1,6 +1,6 @@
 general:
   mode: live
-  strategy: balanced
+  strategy: aggressive
   log_level: info
   timezone: Asia/Seoul
 data_agent:
@@ -114,8 +114,8 @@ data_agent:
     cleanup_interval_min: 30
 analysis_agent:
   spread:
-    threshold_high: 0.05
-    threshold_extreme: 0.15
+    threshold_high: 0.001
+    threshold_extreme: 0.005
     lookback_count: 60
   indicators:
     rsi:
@@ -134,20 +134,20 @@ analysis_agent:
       medium: 25
       long: 99
   weights:
-    spread: 0.3
-    rsi: 0.15
-    macd: 0.2
+    spread: 0.1
+    rsi: 0.2
+    macd: 0.25
     bollinger: 0.15
-    ma: 0.2
+    ma: 0.3
   signal:
-    entry_threshold: 0.4
-    min_confidence: 0.35
-    cooldown_seconds: 30
+    entry_threshold: 0.45
+    min_confidence: 0.4
+    cooldown_seconds: 60
   risk:
     atr_period: 14
-    stop_loss_multiplier: 2
-    take_profit_multiplier: 2.5
-    min_risk_reward_ratio: 1.25
+    stop_loss_multiplier: 1.5
+    take_profit_multiplier: 3
+    min_risk_reward_ratio: 2
 trade_agent:
   hyperliquid:
     base_url: https://api.hyperliquid.xyz
@@ -156,17 +156,17 @@ trade_agent:
     default: 5
     max: 10
   risk:
-    risk_per_trade: 0.03
-    max_position_pct: 0.15
-    max_daily_loss: 0.08
-    max_concurrent_positions: 6
-    max_daily_trades: 150
+    risk_per_trade: 0.02
+    max_position_pct: 0.12
+    max_daily_loss: 0.06
+    max_concurrent_positions: 4
+    max_daily_trades: 80
     min_balance_usdc: 100
-    min_signal_confidence: 0.35
+    min_signal_confidence: 0.4
   trailing_stop:
     enabled: true
-    activation_pct: 2
-    trail_pct: 1
+    activation_pct: 1
+    trail_pct: 0.5
   safety:
     kill_switch_file: data/KILL_SWITCH
     max_consecutive_api_errors: 5

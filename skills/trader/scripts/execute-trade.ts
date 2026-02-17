@@ -400,7 +400,7 @@ async function executeSignals(hl: HyperliquidService, risk: RiskManager): Promis
 
 // ─── 포지션 모니터링 (SL/TP/트레일링 스탑) ───
 
-async function monitorPositions(hl: HyperliquidService, risk: RiskManager): Promise<void> {
+async function monitorPositions(hl: HyperliquidService, risk: RiskManager, preset?: { stopLoss: { atr_multiplier: number }; takeProfit: { atr_multiplier: number } }): Promise<void> {
   const openTrades = getOpenTrades();
   if (openTrades.length === 0) {
     console.log(JSON.stringify({ status: "no_positions", message: "열린 포지션이 없습니다." }));
@@ -431,16 +431,20 @@ async function monitorPositions(hl: HyperliquidService, risk: RiskManager): Prom
     const pnlPct = ((currentPrice - trade.entry_price) / trade.entry_price) * direction * 100;
 
     // DB에서 SL/TP 가져오기 (trades 테이블에 저장된 값 우선)
+    // 폴백: 프리셋 ATR 기반 비율 사용 (SL 1.5x / TP 3.0x ATR ≈ 가격의 약 3%/6%)
+    const slFallbackPct = (preset?.stopLoss.atr_multiplier ?? 1.5) * 0.02; // ATR ≈ 2% 가정
+    const tpFallbackPct = (preset?.takeProfit.atr_multiplier ?? 3.0) * 0.02;
     const stopLoss = trade.stop_loss || (trade.side === "LONG"
-      ? trade.entry_price * 0.98
-      : trade.entry_price * 1.02);
+      ? trade.entry_price * (1 - slFallbackPct)
+      : trade.entry_price * (1 + slFallbackPct));
     const takeProfit = trade.take_profit || (trade.side === "LONG"
-      ? trade.entry_price * 1.03
-      : trade.entry_price * 0.97);
+      ? trade.entry_price * (1 + tpFallbackPct)
+      : trade.entry_price * (1 - tpFallbackPct));
 
-    // Peak PnL 업데이트 (DB에 저장)
+    // Peak PnL 업데이트 — 수익 방향만 추적 (pnlPct가 양수일 때만)
     const prevPeak = trade.peak_pnl_pct || 0;
-    const newPeak = Math.max(prevPeak, Math.abs(pnlPct));
+    const profitPnlPct = Math.max(0, pnlPct); // 손실 중에는 peak 갱신 안 함
+    const newPeak = Math.max(prevPeak, profitPnlPct);
     if (newPeak > prevPeak) {
       updateTrade(trade.trade_id, { peak_pnl_pct: newPeak });
     }
@@ -463,18 +467,16 @@ async function monitorPositions(hl: HyperliquidService, risk: RiskManager): Prom
       }
     }
 
-    // 트레일링 스탑 체크
-    if (!exitReason) {
-      const absPnlPct = Math.abs(pnlPct);
-      const isActivated = trade.trailing_activated === 1 || risk.shouldActivateTrailingStop(absPnlPct);
+    // 트레일링 스탑 체크 — 수익 방향(pnlPct > 0)에서만 동작
+    if (!exitReason && pnlPct > 0) {
+      const isActivated = trade.trailing_activated === 1 || risk.shouldActivateTrailingStop(pnlPct);
 
-      // 처음 활성화되면 DB에 기록
       if (isActivated && trade.trailing_activated !== 1) {
         updateTrade(trade.trade_id, { trailing_activated: 1 });
         logger.info(`${trade.symbol} 트레일링 스탑 활성화`, { pnl_pct: pnlPct.toFixed(2) });
       }
 
-      if (isActivated && risk.shouldTriggerTrailingStop(absPnlPct, newPeak)) {
+      if (isActivated && risk.shouldTriggerTrailingStop(pnlPct, newPeak)) {
         exitReason = "trailing_stop";
         logger.info(`${trade.symbol} 트레일링 스탑 트리거`, {
           peak: newPeak.toFixed(2),
@@ -733,12 +735,32 @@ async function main(): Promise<void> {
   const strategyName = getStrategy();
   const preset = getStrategyPreset(strategyName);
   const hl = new HyperliquidService();
-  const risk = new RiskManager(preset.trade);
+
+  // AI 조정값 머지: min_confidence 등이 낮아졌으면 RiskManager에 반영
+  const mergedTrade = { ...preset.trade, risk: { ...preset.trade.risk } };
+  const root = getProjectRoot();
+  const adjPath = resolve(root, "data/ai-adjustments.json");
+  if (existsSync(adjPath)) {
+    try {
+      const adjRaw = readFileSync(adjPath, "utf-8");
+      const adj = JSON.parse(adjRaw);
+      // 1시간 이내만 적용
+      if (adj.timestamp && (Date.now() - new Date(adj.timestamp).getTime()) < 60 * 60 * 1000) {
+        if (adj.adjustments?.min_confidence?.to !== undefined) {
+          mergedTrade.risk.min_signal_confidence = adj.adjustments.min_confidence.to;
+          logger.info(`AI 조정 적용: min_signal_confidence → ${adj.adjustments.min_confidence.to}`);
+        }
+      }
+    } catch { /* ai-adjustments.json 파싱 실패 시 무시 */ }
+  }
+
+  const risk = new RiskManager(mergedTrade);
 
   logger.info(`전략 프리셋 적용: ${preset.label}`, {
-    leverage: preset.trade.leverage.default,
-    risk_per_trade: preset.trade.risk.risk_per_trade,
-    max_positions: preset.trade.risk.max_concurrent_positions,
+    leverage: mergedTrade.leverage.default,
+    risk_per_trade: mergedTrade.risk.risk_per_trade,
+    max_positions: mergedTrade.risk.max_concurrent_positions,
+    min_confidence: mergedTrade.risk.min_signal_confidence,
   });
 
   // Kill switch 확인 (emergency 제외)
@@ -768,7 +790,7 @@ async function main(): Promise<void> {
       await executeSignals(hl, risk);
       break;
     case "monitor":
-      await monitorPositions(hl, risk);
+      await monitorPositions(hl, risk, preset.trade);
       break;
     case "positions":
       await showPositions(hl);

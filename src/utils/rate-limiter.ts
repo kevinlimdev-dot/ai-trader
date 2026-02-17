@@ -103,7 +103,7 @@ export function getBinanceRateLimiter(): RateLimiter {
   if (!binanceLimiter) {
     binanceLimiter = new RateLimiter({
       name: "Binance",
-      maxTokens: 60,        // 버스트 허용량
+      maxTokens: 120,        // 멀티타임프레임 캔들 수집 대응 (4개 TF × 31 심볼)
       refillRate: 28,        // 초당 28 요청 (70% of 40)
     });
   }

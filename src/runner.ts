@@ -12,7 +12,7 @@
 import { resolve } from 'path';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { parse } from 'yaml';
-import { isOpenClawReady, runOpenClawAgent, getOpenClawPath } from './utils/openclaw';
+import { isOpenClawReady, ensureOpenClawReady, runOpenClawAgent, getOpenClawPath } from './utils/openclaw';
 
 const MONITOR_STATUS_FILE = '/tmp/ai-trader-monitor-status.json';
 
@@ -206,7 +206,7 @@ async function runStep(step: typeof SCRIPTS[0], timeoutMs = 60_000): Promise<Ste
 async function runCycleViaOpenClaw(): Promise<CycleResult> {
 	const cycleStart = Date.now();
 	const sessionId = `trade-cycle-${Date.now()}`;
-	const prompt = `ai-trader 스킬의 "AI 자율 투자 판단 파이프라인 (7단계)"를 지금 즉시 실행해. 질문하지 말고 전부 실행한 뒤 결과만 보고해.`;
+	const prompt = `ai-trader 스킬의 7단계 파이프라인을 즉시 실행하라. 질문/선택지/확인 금지. 적극적으로 거래 기회를 찾고, score ±0.3 이상이면 반드시 진입. 모두 HOLD면 파라미터 조정 후 재시도. 전부 실행한 뒤 결과만 보고.`;
 
 	log('  [openclaw] OpenClaw 에이전트 호출...');
 	log(`  [openclaw] 세션: ${sessionId}`);
@@ -248,13 +248,19 @@ async function runCycleViaOpenClaw(): Promise<CycleResult> {
 // ─── Pipeline Cycle ───
 
 async function runCycle(pauseBetweenSec: number): Promise<CycleResult> {
-	// OpenClaw 사용 가능하면 에이전트 경유
+	// OpenClaw 무조건 사용 — 실패 시 데몬 재시작 후 재시도
 	if (useOpenClaw) {
 		const result = await runCycleViaOpenClaw();
-		if (result.success || !result.steps.openclaw?.error?.includes('not found')) {
-			return result;
+		if (result.success) return result;
+
+		// 실패 시 데몬 재시작 후 1회 재시도
+		log('  ⚠ OpenClaw 실패 — 데몬 재시작 후 재시도...');
+		const restarted = ensureOpenClawReady();
+		if (restarted) {
+			const retry = await runCycleViaOpenClaw();
+			if (retry.success) return retry;
 		}
-		log('  ⚠ OpenClaw 실패 — 직접 실행으로 폴백');
+		log('  ❌ OpenClaw 재시도 실패 — 직접 실행으로 폴백');
 	}
 
 	// 직접 실행 (폴백)
@@ -371,7 +377,7 @@ function sleep(ms: number) {
 
 // ─── Main Loop ───
 
-// OpenClaw 사용 여부 (시작 시 체크)
+// OpenClaw 사용 여부 (항상 사용, 데몬 자동 시작)
 let useOpenClaw = false;
 
 async function main() {
@@ -380,15 +386,24 @@ async function main() {
 	const runnerConfig = getRunnerConfig();
 	const mode = getMode();
 
-	// OpenClaw 사용 가능 여부 확인
+	// OpenClaw 무조건 사용 — 데몬이 꺼져있으면 자동 시작
 	if (!directMode) {
 		const clawPath = getOpenClawPath();
 		if (clawPath) {
-			const daemonOk = isOpenClawReady();
-			useOpenClaw = daemonOk;
-			if (!daemonOk) {
-				log(`⚠ OpenClaw 바이너리 발견 (${clawPath}) 하지만 데몬 미실행`);
+			if (isOpenClawReady()) {
+				useOpenClaw = true;
+			} else {
+				log('🔄 OpenClaw 데몬 자동 시작 중...');
+				const started = ensureOpenClawReady();
+				useOpenClaw = started;
+				if (started) {
+					log('✅ OpenClaw 데몬 시작 완료');
+				} else {
+					log('❌ OpenClaw 데몬 시작 실패 — 직접 실행 모드로 전환');
+				}
 			}
+		} else {
+			log('⚠ OpenClaw 바이너리 없음 — 직접 실행 모드');
 		}
 	}
 
@@ -400,7 +415,7 @@ async function main() {
 	log(`  최대 사이클: ${runnerConfig.maxCycles || '무한'}`);
 	log(`  PID: ${process.pid}`);
 	if (onceMode) log(`  ⚡ 1회 실행 모드`);
-	if (directMode) log(`  ⚠ 직접 실행 모드 (OpenClaw 비활성화)`);
+	if (directMode) log(`  ⚠ 직접 실행 모드 (OpenClaw 수동 비활성화)`);
 	log('═══════════════════════════════════════════');
 
 	status.state = 'running';
@@ -449,6 +464,24 @@ async function main() {
 		const cfg = getRunnerConfig();
 		status.mode = getMode();
 		status.intervalSec = cfg.intervalSec;
+
+		// 매 사이클마다 OpenClaw 데몬 상태 재확인 및 자동 재시작
+		if (!directMode && !useOpenClaw) {
+			const clawPath = getOpenClawPath();
+			if (clawPath) {
+				const restarted = ensureOpenClawReady();
+				if (restarted) {
+					useOpenClaw = true;
+					log('✅ OpenClaw 데몬 복구 — OpenClaw 모드로 전환');
+				}
+			}
+		} else if (useOpenClaw && !isOpenClawReady()) {
+			log('⚠ OpenClaw 데몬 연결 끊김 — 재시작 중...');
+			const restarted = ensureOpenClawReady();
+			if (!restarted) {
+				log('❌ OpenClaw 데몬 재시작 실패');
+			}
+		}
 
 		// 사이클 실행
 		status.state = 'running';

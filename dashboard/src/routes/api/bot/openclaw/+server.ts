@@ -104,9 +104,27 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ success: false, error: 'OpenClaw not installed. Run: bun add -g openclaw' });
 	}
 
-	// 데몬 확인
+	// 데몬 확인 — 꺼져있으면 자동 시작
 	if (!checkDaemon(bin)) {
-		return json({ success: false, error: 'OpenClaw daemon not running. Run: openclaw daemon start' });
+		try {
+			const startProc = Bun.spawnSync([bin, 'daemon', 'start'], {
+				stdout: 'pipe', stderr: 'pipe', timeout: 15_000,
+			});
+			if (startProc.exitCode !== 0) {
+				return json({ success: false, error: 'OpenClaw daemon 자동 시작 실패' });
+			}
+			// 데몬 준비 대기 (최대 10초)
+			let ready = false;
+			for (let i = 0; i < 20; i++) {
+				Bun.sleepSync(500);
+				if (checkDaemon(bin)) { ready = true; break; }
+			}
+			if (!ready) {
+				return json({ success: false, error: 'OpenClaw daemon 시작 후 응답 없음' });
+			}
+		} catch {
+			return json({ success: false, error: 'OpenClaw daemon 시작 중 예외 발생' });
+		}
 	}
 
 	// 이미 실행 중인지 확인
@@ -118,7 +136,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	let prompt: string;
 	switch (action) {
 		case 'pipeline':
-			prompt = 'ai-trader 스킬의 "AI 자율 투자 판단 파이프라인 (7단계)"를 지금 즉시 실행해. 질문하지 말고 전부 실행한 뒤 결과만 보고해.';
+			prompt = 'ai-trader 스킬의 7단계 파이프라인을 즉시 실행하라. 질문/선택지/확인 금지. 적극적으로 거래 기회를 찾고, score ±0.3 이상이면 반드시 진입. 모두 HOLD면 파라미터 조정 후 재시도. 전부 실행한 뒤 결과만 보고.';
 			break;
 		case 'status':
 			prompt = '현재 투자 현황 알려줘. 포지션, 잔고, 오늘 PnL, 전략 상태 포함해서 보고해줘.';

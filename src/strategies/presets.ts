@@ -20,6 +20,10 @@ export interface AnalysisOverrides {
     overbought: number;
     oversold: number;
   };
+  spread: {
+    threshold_high: number;
+    threshold_extreme: number;
+  };
   signal: {
     entry_threshold: number;
     min_confidence: number;
@@ -62,86 +66,92 @@ export interface StrategyPreset {
 }
 
 // ─── Conservative (보수적) ───
+// 높은 진입 장벽, 넓은 SL, R:R 2.5, 멀티타임프레임 추세 합류만 진입
 
 const conservative: StrategyPreset = {
   name: "conservative",
   label: "Conservative",
-  description: "높은 진입 장벽, 낮은 거래 빈도, 자본 보존 우선",
+  description: "높은 진입 장벽, 넓은 SL, 자본 보존 우선 (R:R 2.5)",
   analysis: {
-    weights: { spread: 0.30, rsi: 0.15, macd: 0.20, bollinger: 0.15, ma: 0.20 },
+    weights: { spread: 0.05, rsi: 0.20, macd: 0.25, bollinger: 0.15, ma: 0.35 },
+    rsi: { overbought: 75, oversold: 25 },
+    spread: { threshold_high: 0.0015, threshold_extreme: 0.008 },
+    signal: { entry_threshold: 0.55, min_confidence: 0.5, cooldown_seconds: 120 },
+  },
+  trade: {
+    leverage: { default: 3, max: 7 },
+    risk: {
+      risk_per_trade: 0.015,
+      max_position_pct: 0.08,
+      max_daily_loss: 0.04,
+      max_concurrent_positions: 3,
+      max_daily_trades: 30,
+      min_signal_confidence: 0.5,
+    },
+    stopLoss: { atr_multiplier: 2.0 },
+    takeProfit: { atr_multiplier: 5.0 },
+    trailing_stop: { activation_pct: 1.5, trail_pct: 0.6 },
+    signal_max_age_seconds: 120,
+  },
+};
+
+// ─── Balanced (균형) ───
+// 멀티타임프레임 합류 기반, R:R 2.0, 1h ATR로 SL/TP
+
+const balanced: StrategyPreset = {
+  name: "balanced",
+  label: "Balanced",
+  description: "멀티타임프레임 합류, 안정적 승률 추구 (R:R 2.0)",
+  analysis: {
+    weights: { spread: 0.10, rsi: 0.20, macd: 0.25, bollinger: 0.15, ma: 0.30 },
     rsi: { overbought: 70, oversold: 30 },
-    signal: { entry_threshold: 0.5, min_confidence: 0.4, cooldown_seconds: 60 },
+    spread: { threshold_high: 0.001, threshold_extreme: 0.005 },
+    signal: { entry_threshold: 0.45, min_confidence: 0.4, cooldown_seconds: 60 },
   },
   trade: {
     leverage: { default: 5, max: 10 },
     risk: {
       risk_per_trade: 0.02,
-      max_position_pct: 0.10,
-      max_daily_loss: 0.05,
-      max_concurrent_positions: 5,
-      max_daily_trades: 100,
+      max_position_pct: 0.12,
+      max_daily_loss: 0.06,
+      max_concurrent_positions: 4,
+      max_daily_trades: 80,
       min_signal_confidence: 0.4,
     },
-    stopLoss: { atr_multiplier: 2.0 },
+    stopLoss: { atr_multiplier: 1.5 },
     takeProfit: { atr_multiplier: 3.0 },
-    trailing_stop: { activation_pct: 1.5, trail_pct: 0.8 },
+    trailing_stop: { activation_pct: 1.0, trail_pct: 0.5 },
     signal_max_age_seconds: 60,
   },
 };
 
-// ─── Balanced (균형) ───
+// ─── Aggressive (공격적 모멘텀) ───
+// 15m 크로스 기반 빠른 진입, R:R 2.0, 좁은 SL
 
-const balanced: StrategyPreset = {
-  name: "balanced",
-  label: "Balanced",
-  description: "선별적 진입, 넓은 SL, 안정적 승률 추구",
+const aggressive: StrategyPreset = {
+  name: "aggressive",
+  label: "Aggressive",
+  description: "15m 모멘텀 추종, 빠른 진입/탈출 (R:R 2.0)",
   analysis: {
-    weights: { spread: 0.25, rsi: 0.15, macd: 0.25, bollinger: 0.10, ma: 0.25 },
+    weights: { spread: 0.10, rsi: 0.15, macd: 0.30, bollinger: 0.10, ma: 0.35 },
     rsi: { overbought: 65, oversold: 35 },
-    signal: { entry_threshold: 0.4, min_confidence: 0.35, cooldown_seconds: 30 },
+    spread: { threshold_high: 0.0005, threshold_extreme: 0.003 },
+    signal: { entry_threshold: 0.30, min_confidence: 0.25, cooldown_seconds: 30 },
   },
   trade: {
     leverage: { default: 7, max: 15 },
     risk: {
       risk_per_trade: 0.03,
-      max_position_pct: 0.15,
-      max_daily_loss: 0.08,
+      max_position_pct: 0.18,
+      max_daily_loss: 0.10,
       max_concurrent_positions: 6,
       max_daily_trades: 150,
-      min_signal_confidence: 0.35,
-    },
-    stopLoss: { atr_multiplier: 2.0 },
-    takeProfit: { atr_multiplier: 2.5 },
-    trailing_stop: { activation_pct: 2.0, trail_pct: 1.0 },
-    signal_max_age_seconds: 45,
-  },
-};
-
-// ─── Aggressive (공격적 모멘텀) ───
-
-const aggressive: StrategyPreset = {
-  name: "aggressive",
-  label: "Aggressive",
-  description: "고빈도 모멘텀 추종, 높은 레버리지, 고수익-고위험",
-  analysis: {
-    weights: { spread: 0.15, rsi: 0.15, macd: 0.30, bollinger: 0.10, ma: 0.30 },
-    rsi: { overbought: 60, oversold: 40 },
-    signal: { entry_threshold: 0.15, min_confidence: 0.1, cooldown_seconds: 10 },
-  },
-  trade: {
-    leverage: { default: 10, max: 20 },
-    risk: {
-      risk_per_trade: 0.05,
-      max_position_pct: 0.25,
-      max_daily_loss: 0.15,
-      max_concurrent_positions: 15,
-      max_daily_trades: 500,
-      min_signal_confidence: 0.1,
+      min_signal_confidence: 0.25,
     },
     stopLoss: { atr_multiplier: 1.0 },
-    takeProfit: { atr_multiplier: 4.0 },
+    takeProfit: { atr_multiplier: 2.0 },
     trailing_stop: { activation_pct: 0.7, trail_pct: 0.3 },
-    signal_max_age_seconds: 30,
+    signal_max_age_seconds: 45,
   },
 };
 

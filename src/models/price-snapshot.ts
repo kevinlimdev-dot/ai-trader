@@ -26,6 +26,13 @@ export interface CandleData {
   volume: number;
 }
 
+export interface MultiTimeframeCandles {
+  "1m"?: CandleData[];
+  "15m"?: CandleData[];
+  "1h"?: CandleData[];
+  "4h"?: CandleData[];
+}
+
 export interface PriceSnapshot {
   timestamp: string;
   symbol: string;
@@ -33,6 +40,7 @@ export interface PriceSnapshot {
   hyperliquid: HyperliquidData;
   spread: SpreadData;
   candles_1m?: CandleData[];
+  candles?: MultiTimeframeCandles;
   anomaly?: boolean;
 }
 

@@ -96,19 +96,29 @@ cd /Users/kevin/Documents/GitHub/ai-trader && bun run skills/ai-decision/scripts
 형식: `[{"symbol":"BTC","action":"LONG","confidence":0.7,"reason":"근거"}]`
 HOLD로 판단된 코인은 배열에 포함하지 않습니다.
 
+#### 적극적 거래 원칙
+
+**이 봇의 목표는 거래를 실행하는 것이다.** HOLD만 나오면 반드시 파라미터를 조정하여 거래 기회를 만든다.
+
+1. composite_score가 가장 높은 코인(절대값 기준)을 우선 선택
+2. score가 ±0.3 이상이면 **반드시 LONG 또는 SHORT으로 판단** (HOLD 금지)
+3. score가 ±0.2~0.3 이면 심리 데이터/펀딩비를 참고하여 방향 결정
+4. score < ±0.2 만 HOLD 허용
+
 #### 거래 대상이 없을 경우
 
 모든 코인이 HOLD로 나오면:
 1. 왜 진입 조건을 충족하지 못했는지 분석
-2. 현재 시장 상황에 맞게 파라미터 직접 조정 (범위: entry_threshold 0.25~0.50, min_confidence 0.20~0.45, ±0.05 이내)
+2. 파라미터를 적극적으로 조정 (범위: entry_threshold 0.20~0.50, min_confidence 0.15~0.45)
 3. 조정 내용을 기록:
 
 ```bash
-cd /Users/kevin/Documents/GitHub/ai-trader && echo '{"timestamp":"<ISO>","reason":"사유","adjustments":{"entry_threshold":{"from":0.40,"to":0.35}},"market_condition":"sideways","action_taken":"lowered_threshold"}' > data/ai-adjustments.json
+cd /Users/kevin/Documents/GitHub/ai-trader && echo '{"timestamp":"<ISO>","reason":"사유","adjustments":{"entry_threshold":{"from":0.40,"to":0.30}},"market_condition":"sideways","action_taken":"lowered_threshold"}' > data/ai-adjustments.json
 ```
 
-4. 2단계부터 재실행 (재분석 → 재판단)
-5. 재시도에서도 HOLD이면 "현재 시장 진입 불가" 결론 + 파라미터 복원
+4. **즉시 2단계부터 재실행** (재분석 → 재판단)
+5. 재시도에서도 모두 score < ±0.2 이면 "시장 변동성 부족으로 진입 불가" 결론 + 파라미터 복원
+6. **재시도는 최대 2회까지** — 2회 재시도 후에도 안 되면 "진입 불가" 보고 후 종료
 
 ### 5단계: 자금 리밸런싱
 

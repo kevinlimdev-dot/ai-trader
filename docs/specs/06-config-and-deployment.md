@@ -227,10 +227,6 @@ openclaw pairing approve telegram
 프로젝트 루트 `.env`에 시크릿 저장:
 
 ```bash
-# 바이낸스 선물 (가격 조회용 — 공개 API만 사용 시 없어도 됨)
-BINANCE_API_KEY=your_binance_api_key
-BINANCE_API_SECRET=your_binance_api_secret
-
 # 하이퍼리퀴드
 HYPERLIQUID_PRIVATE_KEY=0xyour_private_key
 HYPERLIQUID_DEPOSIT_ADDRESS=0xyour_deposit_address

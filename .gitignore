@@ -3,13 +3,18 @@ dist/
 data/*.db
 data/*.db-journal
 data/*.db-wal
+data/*.db-shm
 data/snapshots/*
 !data/snapshots/.gitkeep
 data/signals/*
 !data/signals/.gitkeep
+data/sentiment/*
+!data/sentiment/.gitkeep
 data/fund-requests/*
 !data/fund-requests/.gitkeep
+data/ai-adjustments.json
 data/KILL_SWITCH
+data/runner.log
 .env
 .env.*
 !.env.example
@@ -19,3 +24,4 @@ bun.lock
 dashboard/.svelte-kit/
 dashboard/build/
 dashboard/node_modules/
+/tmp/ai-trader-*.json

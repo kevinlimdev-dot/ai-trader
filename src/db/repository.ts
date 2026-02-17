@@ -327,6 +327,104 @@ export function getOpenTradeBySymbol(symbol: string): TradeRecord | null {
     .get(symbol) as TradeRecord | null;
 }
 
+// ─── 최근 거래 이력 & 성과 통계 (AI 판단용) ───
+
+export function getRecentClosedTrades(limit: number = 50): TradeRecord[] {
+  const db = getDb();
+  return db
+    .query(`SELECT * FROM trades WHERE status = 'closed' ORDER BY timestamp_close DESC LIMIT ?`)
+    .all(limit) as TradeRecord[];
+}
+
+export function getPerformanceStats(days: number = 7): {
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  total_pnl: number;
+  avg_pnl: number;
+  avg_win: number;
+  avg_loss: number;
+  max_win: number;
+  max_loss: number;
+  avg_hold_time_min: number;
+  best_symbols: { symbol: string; pnl: number; count: number }[];
+  worst_symbols: { symbol: string; pnl: number; count: number }[];
+  pnl_by_side: { long_pnl: number; short_pnl: number; long_count: number; short_count: number };
+  consecutive_losses: number;
+} {
+  const db = getDb();
+  const trades = db
+    .query(`SELECT * FROM trades WHERE status = 'closed' AND timestamp_close >= datetime('now', '-${days} days')`)
+    .all() as TradeRecord[];
+
+  if (trades.length === 0) {
+    return {
+      total_trades: 0, winning_trades: 0, losing_trades: 0, win_rate: 0,
+      total_pnl: 0, avg_pnl: 0, avg_win: 0, avg_loss: 0, max_win: 0, max_loss: 0,
+      avg_hold_time_min: 0, best_symbols: [], worst_symbols: [],
+      pnl_by_side: { long_pnl: 0, short_pnl: 0, long_count: 0, short_count: 0 },
+      consecutive_losses: 0,
+    };
+  }
+
+  const winners = trades.filter((t) => (t.pnl || 0) > 0);
+  const losers = trades.filter((t) => (t.pnl || 0) < 0);
+  const pnls = trades.map((t) => t.pnl || 0);
+  const totalPnl = pnls.reduce((s, p) => s + p, 0);
+
+  // 평균 보유 시간
+  const holdTimes = trades
+    .filter((t) => t.timestamp_open && t.timestamp_close)
+    .map((t) => (new Date(t.timestamp_close!).getTime() - new Date(t.timestamp_open).getTime()) / 60000);
+  const avgHoldTime = holdTimes.length > 0 ? holdTimes.reduce((s, h) => s + h, 0) / holdTimes.length : 0;
+
+  // 심볼별 성과
+  const symbolMap = new Map<string, { pnl: number; count: number }>();
+  for (const t of trades) {
+    const prev = symbolMap.get(t.symbol) || { pnl: 0, count: 0 };
+    symbolMap.set(t.symbol, { pnl: prev.pnl + (t.pnl || 0), count: prev.count + 1 });
+  }
+  const symbolStats = [...symbolMap.entries()].map(([symbol, stats]) => ({ symbol, ...stats }));
+  const bestSymbols = symbolStats.sort((a, b) => b.pnl - a.pnl).slice(0, 5);
+  const worstSymbols = symbolStats.sort((a, b) => a.pnl - b.pnl).slice(0, 5);
+
+  // 롱/숏별 성과
+  const longTrades = trades.filter((t) => t.side === "LONG");
+  const shortTrades = trades.filter((t) => t.side === "SHORT");
+
+  // 연속 손실
+  let maxConsecLoss = 0;
+  let currentConsec = 0;
+  for (const t of [...trades].reverse()) {
+    if ((t.pnl || 0) < 0) { currentConsec++; maxConsecLoss = Math.max(maxConsecLoss, currentConsec); }
+    else { currentConsec = 0; }
+  }
+
+  return {
+    total_trades: trades.length,
+    winning_trades: winners.length,
+    losing_trades: losers.length,
+    win_rate: trades.length > 0 ? winners.length / trades.length : 0,
+    total_pnl: totalPnl,
+    avg_pnl: trades.length > 0 ? totalPnl / trades.length : 0,
+    avg_win: winners.length > 0 ? winners.reduce((s, t) => s + (t.pnl || 0), 0) / winners.length : 0,
+    avg_loss: losers.length > 0 ? losers.reduce((s, t) => s + (t.pnl || 0), 0) / losers.length : 0,
+    max_win: Math.max(...pnls, 0),
+    max_loss: Math.min(...pnls, 0),
+    avg_hold_time_min: avgHoldTime,
+    best_symbols: bestSymbols,
+    worst_symbols: worstSymbols,
+    pnl_by_side: {
+      long_pnl: longTrades.reduce((s, t) => s + (t.pnl || 0), 0),
+      short_pnl: shortTrades.reduce((s, t) => s + (t.pnl || 0), 0),
+      long_count: longTrades.length,
+      short_count: shortTrades.length,
+    },
+    consecutive_losses: maxConsecLoss,
+  };
+}
+
 // ─── API Error Counter (파일 기반 — 프로세스 재시작에도 유지) ───
 
 const API_ERROR_FILE = "api_error_count";
