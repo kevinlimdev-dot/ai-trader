@@ -4,6 +4,7 @@ import { createLogger } from "./logger";
 import { existsSync } from "fs";
 import { resolve } from "path";
 import { getProjectRoot } from "./config";
+import type { TradeOverrides } from "../strategies/presets";
 
 const logger = createLogger("RiskManager");
 
@@ -21,10 +22,20 @@ export interface RiskCheckResult {
 
 export class RiskManager {
   private config = loadConfig();
+  private overrides: TradeOverrides | null = null;
 
-  constructor() {
-    // 설정값 기본 검증
+  constructor(overrides?: TradeOverrides) {
+    if (overrides) this.overrides = overrides;
     this.validateConfig();
+  }
+
+  applyOverrides(overrides: TradeOverrides): void {
+    this.overrides = overrides;
+    logger.info("전략 오버라이드 적용", {
+      leverage: overrides.leverage.default,
+      risk: overrides.risk.risk_per_trade,
+      max_positions: overrides.risk.max_concurrent_positions,
+    });
   }
 
   // ─── Config Validation ───
@@ -72,40 +83,39 @@ export class RiskManager {
   // ─── Pre-Trade Checks ───
 
   checkCanTrade(): RiskCheckResult {
-    // Kill Switch 확인
     if (this.isKillSwitchActive()) {
       return { allowed: false, reason: "KILL_SWITCH 활성화됨" };
     }
 
-    // 일일 거래 횟수
+    const maxDailyTrades = this.overrides?.risk.max_daily_trades ?? this.config.trade_agent.risk.max_daily_trades;
     const todayCount = getTodayTradeCount();
-    if (todayCount >= this.config.trade_agent.risk.max_daily_trades) {
-      return { allowed: false, reason: `일일 최대 거래 횟수 초과 (${todayCount}/${this.config.trade_agent.risk.max_daily_trades})` };
+    if (todayCount >= maxDailyTrades) {
+      return { allowed: false, reason: `일일 최대 거래 횟수 초과 (${todayCount}/${maxDailyTrades})` };
     }
 
-    // 동시 포지션 수
+    const maxConcurrent = this.overrides?.risk.max_concurrent_positions ?? this.config.trade_agent.risk.max_concurrent_positions;
     const openTrades = getOpenTrades();
-    if (openTrades.length >= this.config.trade_agent.risk.max_concurrent_positions) {
-      return { allowed: false, reason: `최대 동시 포지션 초과 (${openTrades.length}/${this.config.trade_agent.risk.max_concurrent_positions})` };
+    if (openTrades.length >= maxConcurrent) {
+      return { allowed: false, reason: `최대 동시 포지션 초과 (${openTrades.length}/${maxConcurrent})` };
     }
 
     return { allowed: true };
   }
 
   checkDailyLoss(currentBalance: number, startBalance: number): RiskCheckResult {
-    // division by zero 방지
     if (startBalance <= 0) {
       logger.warn("시작 잔고가 0 이하", { startBalance });
       return { allowed: true };
     }
 
+    const maxDailyLoss = this.overrides?.risk.max_daily_loss ?? this.config.trade_agent.risk.max_daily_loss;
     const todayPnl = getTodayPnl();
     const lossPct = Math.abs(todayPnl) / startBalance;
 
-    if (todayPnl < 0 && lossPct >= this.config.trade_agent.risk.max_daily_loss) {
+    if (todayPnl < 0 && lossPct >= maxDailyLoss) {
       return {
         allowed: false,
-        reason: `일일 최대 손실 초과 (${(lossPct * 100).toFixed(2)}% / ${this.config.trade_agent.risk.max_daily_loss * 100}%)`,
+        reason: `일일 최대 손실 초과 (${(lossPct * 100).toFixed(2)}% / ${maxDailyLoss * 100}%)`,
       };
     }
 
@@ -123,10 +133,11 @@ export class RiskManager {
   }
 
   checkSignalConfidence(confidence: number): RiskCheckResult {
-    if (confidence < this.config.trade_agent.risk.min_signal_confidence) {
+    const minConfidence = this.overrides?.risk.min_signal_confidence ?? this.config.trade_agent.risk.min_signal_confidence;
+    if (confidence < minConfidence) {
       return {
         allowed: false,
-        reason: `시그널 신뢰도 부족 (${confidence.toFixed(2)} < ${this.config.trade_agent.risk.min_signal_confidence})`,
+        reason: `시그널 신뢰도 부족 (${confidence.toFixed(2)} < ${minConfidence})`,
       };
     }
     return { allowed: true };
@@ -136,8 +147,8 @@ export class RiskManager {
 
   calculatePositionSize(params: PositionSizeParams): number {
     const { balance, entryPrice, stopLoss, leverage } = params;
-    const riskPerTrade = this.config.trade_agent.risk.risk_per_trade;
-    const maxPositionPct = this.config.trade_agent.risk.max_position_pct;
+    const riskPerTrade = this.overrides?.risk.risk_per_trade ?? this.config.trade_agent.risk.risk_per_trade;
+    const maxPositionPct = this.overrides?.risk.max_position_pct ?? this.config.trade_agent.risk.max_position_pct;
 
     // 입력 검증
     if (balance <= 0 || entryPrice <= 0 || leverage <= 0) {
@@ -171,25 +182,27 @@ export class RiskManager {
   }
 
   getLeverage(): number {
-    return this.config.trade_agent.leverage.default;
+    return this.overrides?.leverage.default ?? this.config.trade_agent.leverage.default;
   }
 
   getMaxLeverage(): number {
-    return this.config.trade_agent.leverage.max;
+    return this.overrides?.leverage.max ?? this.config.trade_agent.leverage.max;
   }
 
   // ─── Trailing Stop ───
 
   shouldActivateTrailingStop(pnlPct: number): boolean {
     if (!this.config.trade_agent.trailing_stop.enabled) return false;
-    return pnlPct >= this.config.trade_agent.trailing_stop.activation_pct;
+    const activationPct = this.overrides?.trailing_stop.activation_pct ?? this.config.trade_agent.trailing_stop.activation_pct;
+    return pnlPct >= activationPct;
   }
 
   shouldTriggerTrailingStop(currentPnlPct: number, peakPnlPct: number): boolean {
     if (!this.config.trade_agent.trailing_stop.enabled) return false;
-    if (peakPnlPct <= 0) return false; // peak이 0 이하면 트리거 안함
+    if (peakPnlPct <= 0) return false;
+    const trailPct = this.overrides?.trailing_stop.trail_pct ?? this.config.trade_agent.trailing_stop.trail_pct;
     const drawdown = peakPnlPct - currentPnlPct;
-    return drawdown >= this.config.trade_agent.trailing_stop.trail_pct;
+    return drawdown >= trailPct;
   }
 
   // ─── Price Anomaly ───

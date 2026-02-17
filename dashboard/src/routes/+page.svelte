@@ -33,6 +33,21 @@
 		hlDetail?: HlBalanceDetail;
 	}
 
+	// HL 실시간 포지션 타입
+	interface HlLivePosition {
+		coin: string;
+		side: 'LONG' | 'SHORT';
+		size: number;
+		entryPx: number;
+		positionValue: number;
+		unrealizedPnl: number;
+		leverage: number;
+		leverageType: string;
+		liquidationPx: number | null;
+		marginUsed: number;
+		returnOnEquity: number;
+	}
+
 	let { data } = $props();
 	let dashboard: DashboardData = $state(data.dashboard as any);
 	let signals: any = $state(data.signals);
@@ -41,16 +56,86 @@
 	let liveBalances: LiveBalance | null = $state(data.liveBalances as any ?? null);
 	let availableCoins: TradableCoin[] = $state(data.availableCoins as any ?? []);
 	let configSymbols: string[] = $state(data.configSymbols as any ?? []);
+	let hlPositions: HlLivePosition[] = $state(data.hlPositions as any ?? []);
 	let chartData: Record<string, { time: string; binance: number; hyperliquid: number }[]> = $state({});
 	let lastPriceUpdate = $state(Date.now());
 	let copiedId = $state('');
 	let showAllCoins = $state(false);
 
-	// Pipeline state
+	// Deposit state (Arbitrum → HyperLiquid)
+	interface DepositInfo {
+		status: string;
+		amount?: string;
+		usdcBalance?: string;
+		ethBalance?: string;
+		txHash?: string;
+		arbiscan?: string;
+		error?: string;
+	}
+	let depositLoading = $state(false);
+	let depositResult: DepositInfo | null = $state(null);
+	let depositChecking = $state(false);
+	let arbUsdcBalance: string | null = $state(null);
+
+	async function checkArbBalance() {
+		depositChecking = true;
+		try {
+			const res = await fetch('/api/bot/deposit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'check' }) });
+			const data = await res.json();
+			if (data.status === 'dry_run') {
+				arbUsdcBalance = data.usdcBalance || data.amount || null;
+			}
+		} catch { /* ignore */ }
+		depositChecking = false;
+	}
+
+	async function executeDeposit() {
+		if (!confirm('Arbitrum USDC를 HyperLiquid에 입금합니다. 진행하시겠습니까?')) return;
+		depositLoading = true;
+		depositResult = null;
+		try {
+			const res = await fetch('/api/bot/deposit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'deposit' }) });
+			depositResult = await res.json();
+			if (depositResult?.status === 'success') {
+				// 입금 성공 후 잔고 갱신 (HyperLiquid 입금 처리 ~1분)
+				const refreshBal = async () => { try { liveBalances = await (await fetch('/api/balances')).json(); } catch {} };
+				setTimeout(refreshBal, 5000);
+				setTimeout(refreshBal, 30000);
+				setTimeout(refreshBal, 60000);
+				arbUsdcBalance = null;
+			}
+		} catch (err) {
+			depositResult = { status: 'error', error: err instanceof Error ? err.message : String(err) };
+		}
+		depositLoading = false;
+	}
+
+	// Pipeline state (OpenClaw)
 	type PipelineStep = { id: string; label: string; status: 'pending' | 'running' | 'done' | 'failed'; result?: BotResult };
 	let pipelineRunning = $state(false);
 	let pipelineSteps: PipelineStep[] = $state([]);
 	let pipelineExpanded = $state(false);
+
+	// OpenClaw state
+	interface OpenClawState {
+		state: 'idle' | 'running' | 'done' | 'failed';
+		output: string;
+		pid?: number;
+		action?: string;
+		startedAt?: string;
+		completedAt?: string;
+	}
+	let openclawState: OpenClawState = $state({ state: 'idle', output: '' });
+	let openclawPolling: ReturnType<typeof setInterval> | null = $state(null);
+
+	// OpenClaw 연결 상태
+	interface OpenClawConnection {
+		installed: boolean;
+		path: string | null;
+		daemonRunning: boolean;
+	}
+	let openclawConn: OpenClawConnection = $state({ installed: false, path: null, daemonRunning: false });
+	let openclawReady = $derived(openclawConn.installed && openclawConn.daemonRunning);
 
 	// Runner state (continuous loop)
 	interface RunnerStatus {
@@ -78,11 +163,133 @@
 	let runnerStatus: RunnerStatus = $state({ state: 'stopped', pid: 0, cycleCount: 0, successCount: 0, failCount: 0, lastCycle: null, nextCycleAt: null, intervalSec: 0, mode: 'unknown', updatedAt: null });
 	let runnerLoading = $state(false);
 
+	// Position Monitor state
+	interface MonitorStatus {
+		state: 'running' | 'idle' | 'stopped';
+		checkCount: number;
+		closedCount: number;
+		openPositions: number;
+		lastCheckAt: string | null;
+		intervalSec: number;
+	}
+	let monitorStatus: MonitorStatus = $state({ state: 'stopped', checkCount: 0, closedCount: 0, openPositions: 0, lastCheckAt: null, intervalSec: 15 });
+
+	async function fetchMonitorStatus() {
+		try {
+			const res = await fetch('/api/bot/monitor');
+			if (res.ok) monitorStatus = await res.json();
+		} catch {}
+	}
+
+	async function toggleMonitor() {
+		const action = monitorStatus.state === 'running' ? 'stop' : 'start';
+		await fetch('/api/bot/monitor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) });
+		setTimeout(fetchMonitorStatus, 1500);
+	}
+
+	// 개별 포지션 청산
+	let closingPositions: Set<string> = $state(new Set());
+
+	async function closePositionAction(coin: string, side: string) {
+		const key = `${coin}-${side}`;
+		if (closingPositions.has(key)) return;
+		if (!confirm(`${coin} ${side} 포지션을 청산하시겠습니까?`)) return;
+
+		closingPositions = new Set([...closingPositions, key]);
+		try {
+			const res = await fetch('/api/bot/close-position', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ coin, side })
+			});
+			const result = await res.json();
+			if (!result.success) {
+				alert(`청산 실패: ${result.error || '알 수 없는 오류'}`);
+			}
+			// 잠시 후 포지션/잔고 갱신
+			setTimeout(async () => {
+				try {
+					const [posRes, balRes] = await Promise.all([
+						fetch('/api/positions'),
+						fetch('/api/balances'),
+					]);
+					if (posRes.ok) hlPositions = await posRes.json();
+					if (balRes.ok) liveBalances = await balRes.json();
+				} catch {}
+			}, 2000);
+		} catch (err) {
+			alert(`청산 중 오류: ${err instanceof Error ? err.message : String(err)}`);
+		} finally {
+			const updated = new Set(closingPositions);
+			updated.delete(key);
+			closingPositions = updated;
+		}
+	}
+
+	// Strategy state
+	type StrategyName = 'conservative' | 'balanced' | 'aggressive';
+	interface StrategyInfo {
+		name: StrategyName;
+		label: string;
+		description: string;
+		leverage: string;
+		risk: string;
+		rr: string;
+		maxPos: number;
+	}
+	const STRATEGIES: StrategyInfo[] = [
+		{ name: 'conservative', label: 'Conservative', description: '보수적 · 자본 보존', leverage: '5x', risk: '2%', rr: '1.5', maxPos: 5 },
+		{ name: 'balanced', label: 'Balanced', description: '선별적 진입 · 안정 승률', leverage: '7x', risk: '3%', rr: '1.25', maxPos: 6 },
+		{ name: 'aggressive', label: 'Aggressive', description: '공격적 · 모멘텀 추종', leverage: '10x', risk: '5%', rr: '4.0', maxPos: 15 },
+	];
+	let currentStrategy: StrategyName = $state('balanced');
+	let strategyLoading = $state(false);
+	let activeStrategy = $derived(STRATEGIES.find(s => s.name === currentStrategy) ?? STRATEGIES[1]);
+
+	// Runner log state
+	let runnerLog: string[] = $state([]);
+	let signalExpanded: string | null = $state(null);
+	let runnerActive = $derived(runnerStatus.state === 'running' || runnerStatus.state === 'idle');
+
+	// 1초 tick — timeAgo를 실시간 갱신
+	let tick = $state(0);
+
+	function timeAgo(isoStr: string, _tick?: number): string {
+		const diff = Date.now() - new Date(isoStr).getTime();
+		const sec = Math.floor(diff / 1000);
+		if (sec < 60) return `${sec}초 전`;
+		const min = Math.floor(sec / 60);
+		if (min < 60) return `${min}분 전`;
+		const hr = Math.floor(min / 60);
+		return `${hr}시간 ${min % 60}분 전`;
+	}
+
+	function formatPrice(price: number): string {
+		if (price >= 1000) return price.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+		if (price >= 1) return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+		return price.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 });
+	}
+
+	function formatOpenClawOutput(raw: string): string {
+		return raw
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/^(.*(?:LONG|매수|성공|완료|✅|✓).*)$/gm, '<span style="color:var(--accent-green)">$1</span>')
+			.replace(/^(.*(?:SHORT|매도).*)$/gm, '<span style="color:var(--accent-yellow)">$1</span>')
+			.replace(/^(.*(?:ERROR|error|실패|❌|⛔).*)$/gm, '<span style="color:var(--accent-red)">$1</span>')
+			.replace(/^(.*(?:━━━|═══|───|시작|사이클).*)$/gm, '<span style="color:var(--accent-blue)">$1</span>')
+			.replace(/^(.*(?:HOLD|스킵|NEUTRAL).*)$/gm, '<span style="opacity:0.5">$1</span>');
+	}
+
 	// ─── Tiered refresh intervals ───
 	// Prices: every 3s (lightweight, DB-only)
 	// Dashboard KPI + Signals + Runner: every 10s (moderate)
 	// Charts: every 60s (heavier query)
 	$effect(() => {
+		// 1s tick for live countdowns
+		const tickInterval = setInterval(() => { tick++; }, 1000);
+
 		// Fast: Live prices every 3s
 		const priceInterval = setInterval(async () => {
 			try {
@@ -93,8 +300,12 @@
 			} catch { /* ignore */ }
 		}, 3000);
 
-		// Medium: Dashboard + signals + balances + runner every 10s
+		// Medium: Dashboard + signals + balances + runner + monitor + log every 10s
 		fetchRunnerStatus();
+		fetchStrategy();
+		fetchRunnerLog();
+		fetchOpenClawStatus();
+		fetchMonitorStatus();
 		const dashInterval = setInterval(async () => {
 			try {
 				const [dRes, sRes, bRes] = await Promise.all([
@@ -102,12 +313,16 @@
 					fetch('/api/signals'),
 					fetch('/api/balances'),
 				]);
-				dashboard = await dRes.json();
+				const dData = await dRes.json();
+				dashboard = dData;
+				if (dData.hlPositions) hlPositions = dData.hlPositions;
 				const sData = await sRes.json();
 				signals = sData.signals;
 				liveBalances = await bRes.json();
 			} catch { /* ignore */ }
 			fetchRunnerStatus();
+			fetchRunnerLog();
+			fetchMonitorStatus();
 		}, 10000);
 
 		// Slow: Charts + coins every 60s (heavier query)
@@ -116,9 +331,11 @@
 		const chartInterval = setInterval(loadChartData, 60000);
 
 		return () => {
+			clearInterval(tickInterval);
 			clearInterval(priceInterval);
 			clearInterval(dashInterval);
 			clearInterval(chartInterval);
+			if (openclawPolling) clearInterval(openclawPolling);
 		};
 	});
 
@@ -127,6 +344,45 @@
 			const res = await fetch('/api/bot/runner');
 			runnerStatus = await res.json();
 		} catch { /* ignore */ }
+	}
+
+	async function fetchOpenClawStatus() {
+		try {
+			const res = await fetch('/api/bot/openclaw');
+			const d = await res.json();
+			if (d.openclaw) openclawConn = d.openclaw;
+		} catch { /* ignore */ }
+	}
+
+	async function fetchRunnerLog() {
+		try {
+			const res = await fetch('/api/bot/log?lines=30');
+			const d = await res.json();
+			if (d.lines) runnerLog = d.lines;
+		} catch { /* ignore */ }
+	}
+
+	async function fetchStrategy() {
+		try {
+			const res = await fetch('/api/bot/strategy');
+			const d = await res.json();
+			if (d.strategy) currentStrategy = d.strategy;
+		} catch { /* ignore */ }
+	}
+
+	async function setStrategy(name: StrategyName) {
+		if (strategyLoading || name === currentStrategy) return;
+		strategyLoading = true;
+		try {
+			const res = await fetch('/api/bot/strategy', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ strategy: name }),
+			});
+			const d = await res.json();
+			if (d.success) currentStrategy = name;
+		} catch { /* ignore */ }
+		strategyLoading = false;
 	}
 
 	async function toggleRunner() {
@@ -168,8 +424,6 @@
 		return m > 0 ? `${m}분 ${s}초` : `${s}초`;
 	}
 
-	let runnerActive = $derived(runnerStatus.state === 'running' || runnerStatus.state === 'idle');
-
 	async function loadCoins() {
 		try {
 			const res = await fetch('/api/coins');
@@ -195,52 +449,86 @@
 		pipelineRunning = true;
 		pipelineExpanded = true;
 		pipelineSteps = [
-			{ id: 'collect', label: '가격 수집', status: 'pending' },
-			{ id: 'analyze', label: '시그널 분석', status: 'pending' },
-			{ id: 'auto-rebalance', label: '자금 리밸런싱', status: 'pending' },
-			{ id: 'trade', label: '거래 실행', status: 'pending' },
-			{ id: 'monitor', label: '포지션 모니터링', status: 'pending' },
+			{ id: 'runner', label: '파이프라인 1회 실행', status: 'running' },
 		];
 
-		for (let i = 0; i < pipelineSteps.length; i++) {
-			pipelineSteps[i].status = 'running';
-			try {
-				const res = await fetch('/api/bot/run', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ script: pipelineSteps[i].id }),
-				});
-				const result: BotResult = await res.json();
-				pipelineSteps[i].result = result;
-				pipelineSteps[i].status = result.success ? 'done' : 'failed';
+		try {
+			const res = await fetch('/api/bot/runner', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'once' }),
+			});
+			const result = await res.json();
 
-				// collect/analyze 실패 시만 파이프라인 중단 (rebalance 실패는 계속 진행)
-				if (!result.success && (pipelineSteps[i].id === 'collect' || pipelineSteps[i].id === 'analyze')) {
-					for (let j = i + 1; j < pipelineSteps.length; j++) {
-						pipelineSteps[j].status = 'pending';
-					}
-					break;
-				}
-			} catch (e) {
-				pipelineSteps[i].result = { success: false, error: String(e) };
-				pipelineSteps[i].status = 'failed';
-				break;
+			if (!result.success) {
+				pipelineSteps[0].status = 'failed';
+				pipelineSteps[0].result = { success: false, error: result.error };
+				pipelineRunning = false;
+				return;
 			}
 
-			// Refresh dashboard data after each step
-			try {
-				const [dRes, sRes] = await Promise.all([
-					fetch('/api/dashboard'),
-					fetch('/api/signals'),
-				]);
-				dashboard = await dRes.json();
-				const sData = await sRes.json();
-				signals = sData.signals;
-			} catch { /* ignore */ }
+			// Runner 상태 + 로그를 폴링하여 진행 상황 추적
+			const pollRunner = setInterval(async () => {
+				await fetchRunnerStatus();
+				await fetchRunnerLog();
+				const st = runnerStatus;
+				if (st.state === 'stopped' || st.state === 'error') {
+					clearInterval(pollRunner);
+					pipelineSteps[0].status = st.lastCycle?.success ? 'done' : 'failed';
+					if (!st.lastCycle?.success) {
+						pipelineSteps[0].result = { success: false, error: st.stopReason || 'Cycle failed' };
+					}
+					pipelineRunning = false;
+					// 완료 후 데이터 갱신
+					try {
+						const [dRes, sRes] = await Promise.all([
+							fetch('/api/dashboard'),
+							fetch('/api/signals'),
+						]);
+						dashboard = await dRes.json();
+						const sData = await sRes.json();
+						signals = sData.signals;
+						liveBalances = await (await fetch('/api/balances')).json();
+					} catch { /* ignore */ }
+				}
+			}, 3000);
+		} catch (e) {
+			pipelineSteps[0].status = 'failed';
+			pipelineSteps[0].result = { success: false, error: String(e) };
+			pipelineRunning = false;
 		}
+	}
 
-		pipelineRunning = false;
-		loadChartData();
+	async function pollOpenClaw() {
+		try {
+			const res = await fetch('/api/bot/openclaw');
+			const data: OpenClawState = await res.json();
+			openclawState = data;
+
+			if (data.state === 'done') {
+				pipelineSteps[0].status = 'done';
+				pipelineRunning = false;
+				if (openclawPolling) { clearInterval(openclawPolling); openclawPolling = null; }
+				// 완료 후 대시보드 데이터 갱신
+				try {
+					const [dRes, sRes] = await Promise.all([
+						fetch('/api/dashboard'),
+						fetch('/api/signals'),
+						fetch('/api/balances'),
+					]);
+					dashboard = await dRes.json();
+					const sData = await sRes.json();
+					signals = sData.signals;
+					liveBalances = await (await fetch('/api/balances')).json();
+				} catch { /* ignore */ }
+				loadChartData();
+			} else if (data.state === 'failed') {
+				pipelineSteps[0].status = 'failed';
+				pipelineSteps[0].result = { success: false, error: 'OpenClaw agent failed' };
+				pipelineRunning = false;
+				if (openclawPolling) { clearInterval(openclawPolling); openclawPolling = null; }
+			}
+		} catch { /* ignore */ }
 	}
 
 	async function copyAddress(addr: string, id: string) {
@@ -254,21 +542,6 @@
 	function truncateAddr(addr: string) {
 		if (addr.length <= 16) return addr;
 		return `${addr.slice(0, 10)}...${addr.slice(-8)}`;
-	}
-
-	function timeAgo(ts: string) {
-		if (!ts) return '';
-		const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-		if (diff < 5) return 'just now';
-		if (diff < 60) return `${diff}s ago`;
-		if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-		return `${Math.floor(diff / 3600)}h ago`;
-	}
-
-	function formatPrice(price: number) {
-		if (price >= 10000) return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-		if (price >= 100) return price.toFixed(2);
-		return price.toFixed(4);
 	}
 
 	let pnlColor = $derived(dashboard.todayPnl >= 0 ? 'green' as const : 'red' as const);
@@ -290,6 +563,15 @@
 			{#if dashboard.killSwitch}
 				<span class="px-3 py-1 rounded-lg text-sm font-medium bg-[var(--accent-red)]/15 text-[var(--accent-red)] border border-[var(--accent-red)]/30">KILL SWITCH ON</span>
 			{/if}
+			<!-- OpenClaw 연결 상태 -->
+			<span class="px-2.5 py-1 rounded-lg text-[10px] font-medium flex items-center gap-1.5
+				{openclawReady
+					? 'bg-[var(--accent-green)]/10 text-[var(--accent-green)] border border-[var(--accent-green)]/20'
+					: 'bg-[var(--accent-red)]/10 text-[var(--accent-red)] border border-[var(--accent-red)]/20'
+				}">
+				<span class="w-1.5 h-1.5 rounded-full {openclawReady ? 'bg-[var(--accent-green)]' : 'bg-[var(--accent-red)]'}"></span>
+				OpenClaw {openclawReady ? 'ON' : !openclawConn.installed ? 'Not Installed' : 'Daemon OFF'}
+			</span>
 			<span class="px-3 py-1 rounded-lg text-sm font-medium {dashboard.mode === 'live' ? 'bg-[var(--accent-green)]/15 text-[var(--accent-green)] border border-[var(--accent-green)]/30' : 'bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)] border border-[var(--accent-yellow)]/30'}">
 				{dashboard.mode.toUpperCase()}
 			</span>
@@ -308,19 +590,68 @@
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
 					</svg>
-					Running...
+					실행 중...
 				{:else}
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
 						<path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 					</svg>
-					Run Once
+					1회 실행
 				{/if}
 			</button>
 		</div>
 	</div>
 
-	<!-- ═══════════ Continuous Runner Control ═══════════ -->
+	<!-- ═══════════ Strategy Selector ═══════════ -->
+	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="flex items-center justify-between">
+			<div class="flex items-center gap-3">
+				<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Strategy</h2>
+				<!-- Strategy Buttons -->
+				<div class="flex items-center rounded-lg border border-[var(--border)] overflow-hidden">
+					{#each STRATEGIES as strat}
+						<button
+							onclick={() => setStrategy(strat.name)}
+							disabled={strategyLoading}
+							class="px-4 py-2 text-xs font-semibold transition-all cursor-pointer disabled:cursor-not-allowed
+								{currentStrategy === strat.name
+									? strat.name === 'conservative'
+										? 'bg-[var(--accent-blue)] text-white'
+										: strat.name === 'balanced'
+										? 'bg-[var(--accent-yellow)] text-black'
+										: 'bg-[var(--accent-red)] text-white'
+									: 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
+								}"
+						>
+							{strat.label}
+						</button>
+					{/each}
+				</div>
+			</div>
+
+			<!-- Active Strategy Summary -->
+			<div class="flex items-center gap-4 text-xs">
+				<span class="text-[var(--text-secondary)]">
+					Lev: <strong class="text-white">{activeStrategy.leverage}</strong>
+				</span>
+				<span class="text-[var(--text-secondary)]">
+					Risk: <strong class="text-white">{activeStrategy.risk}</strong>
+				</span>
+				<span class="text-[var(--text-secondary)]">
+					R:R: <strong class="text-white">{activeStrategy.rr}</strong>
+				</span>
+				<span class="text-[var(--text-secondary)]">
+					Max Pos: <strong class="text-white">{activeStrategy.maxPos}</strong>
+				</span>
+				<span class="text-[10px] text-[var(--text-secondary)] italic">{activeStrategy.description}</span>
+			</div>
+		</div>
+	</div>
+
+	<!-- ═══════════ Runner Control + Open Positions ═══════════ -->
+	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+	<!-- Continuous Runner Control -->
 	<div class="bg-[var(--bg-card)] border rounded-xl p-4
 		{runnerActive
 			? 'border-[var(--accent-green)]/40'
@@ -405,6 +736,38 @@
 			</button>
 		</div>
 
+		<!-- 포지션 모니터 상태 -->
+		<div class="mt-3 pt-3 border-t border-[var(--border)] flex items-center justify-between">
+			<div class="flex items-center gap-2">
+				<span class="w-2 h-2 rounded-full {monitorStatus.state === 'running' ? 'bg-[var(--accent-green)] animate-pulse' : 'bg-[var(--text-secondary)]'}"></span>
+				<span class="text-xs text-[var(--text-secondary)]">포지션 모니터</span>
+				{#if monitorStatus.state === 'running'}
+					<span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-green)]/15 text-[var(--accent-green)] font-medium">{monitorStatus.intervalSec}초 주기</span>
+					{#if monitorStatus.openPositions > 0}
+						<span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)] font-medium">포지션 {monitorStatus.openPositions}건</span>
+					{/if}
+					{#if monitorStatus.closedCount > 0}
+						<span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-purple)]/15 text-[var(--accent-purple)] font-medium">청산 {monitorStatus.closedCount}건</span>
+					{/if}
+					{#if monitorStatus.lastCheckAt}
+						<span class="text-[10px] text-[var(--text-secondary)]">#{monitorStatus.checkCount} · {timeAgo(monitorStatus.lastCheckAt, tick)}</span>
+					{/if}
+				{:else}
+					<span class="text-[10px] text-[var(--text-secondary)]">비활성</span>
+				{/if}
+			</div>
+			<button
+				onclick={toggleMonitor}
+				class="text-[10px] px-2.5 py-1 rounded-lg cursor-pointer transition-all
+					{monitorStatus.state === 'running'
+						? 'bg-[var(--accent-red)]/15 text-[var(--accent-red)] hover:bg-[var(--accent-red)]/25'
+						: 'bg-[var(--accent-green)]/15 text-[var(--accent-green)] hover:bg-[var(--accent-green)]/25'
+					}"
+			>
+				{monitorStatus.state === 'running' ? '정지' : '시작'}
+			</button>
+		</div>
+
 		<!-- 마지막 사이클 결과 (있을 때) -->
 		{#if runnerStatus.lastCycle}
 			<div class="mt-3 pt-3 border-t border-[var(--border)]">
@@ -442,100 +805,200 @@
 		{/if}
 	</div>
 
-	<!-- Pipeline Progress -->
-	{#if pipelineSteps.length > 0}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl overflow-hidden {pipelineHasError ? 'border-[var(--accent-red)]/30' : pipelineDone ? 'border-[var(--accent-green)]/30' : 'border-[var(--accent-blue)]/30'}">
+	<!-- Open Positions (HyperLiquid Live) -->
+	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="flex items-center justify-between mb-3">
+			<div class="flex items-center gap-2">
+				<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Open Positions</h2>
+				<span class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-blue)]/15 text-[var(--accent-blue)] font-medium">HL Live</span>
+			</div>
+			<span class="text-[9px] text-[var(--text-secondary)]">{hlPositions.length}건</span>
+		</div>
+		{#if hlPositions.length > 0}
+			<div class="space-y-1.5">
+				{#each hlPositions as pos}
+					{@const pnlPct = pos.returnOnEquity * 100}
+					{@const isProfit = pos.unrealizedPnl >= 0}
+					{@const currentPrice = (() => {
+						const lp = livePrices.find(p => p.symbol === pos.coin);
+						return lp?.hl_price || pos.entryPx;
+					})()}
+					{@const posKey = `${pos.coin}-${pos.side}`}
+					<div class="py-2 px-3 rounded-lg bg-[var(--bg-secondary)]">
+						<div class="flex items-center justify-between">
+							<div class="flex items-center gap-2">
+								<span class="font-medium text-sm">{pos.coin}</span>
+								<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold {pos.side === 'LONG' ? 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]' : 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'}">{pos.side}</span>
+								<span class="text-[10px] text-[var(--text-secondary)]">{pos.leverage}x {pos.leverageType}</span>
+							</div>
+							<div class="flex items-center gap-2">
+								<div class="text-right">
+									<span class="text-sm font-mono font-semibold {isProfit ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'}">
+										{isProfit ? '+' : ''}{pos.unrealizedPnl.toFixed(2)} USD
+									</span>
+									<span class="text-[10px] ml-1 {isProfit ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'}">
+										({isProfit ? '+' : ''}{pnlPct.toFixed(2)}%)
+									</span>
+								</div>
+								<button
+									onclick={() => closePositionAction(pos.coin, pos.side)}
+									disabled={closingPositions.has(posKey)}
+									class="px-2 py-1 rounded text-[10px] font-semibold cursor-pointer transition-all
+										bg-[var(--accent-red)]/10 text-[var(--accent-red)] hover:bg-[var(--accent-red)]/25
+										disabled:opacity-40 disabled:cursor-not-allowed"
+									title="{pos.coin} {pos.side} 포지션 청산"
+								>
+									{#if closingPositions.has(posKey)}
+										<svg class="w-3 h-3 animate-spin inline" fill="none" viewBox="0 0 24 24">
+											<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+											<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+										</svg>
+									{:else}
+										청산
+									{/if}
+								</button>
+							</div>
+						</div>
+						<div class="flex items-center justify-between mt-1 text-[10px] text-[var(--text-secondary)]">
+							<div class="flex gap-3">
+								<span>진입 <span class="font-mono text-[var(--text-primary)]">${pos.entryPx.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></span>
+								<span>현재 <span class="font-mono text-[var(--text-primary)]">${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></span>
+								{#if pos.liquidationPx}
+									<span>청산 <span class="font-mono text-[var(--accent-red)]">${pos.liquidationPx.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></span>
+								{/if}
+							</div>
+							<span>수량 <span class="font-mono">{pos.size}</span> · 가치 <span class="font-mono">${pos.positionValue.toFixed(2)}</span></span>
+						</div>
+					</div>
+				{/each}
+			</div>
+			<!-- 총 미실현 손익 -->
+			{@const totalPnl = hlPositions.reduce((sum, p) => sum + p.unrealizedPnl, 0)}
+			<div class="mt-2 pt-2 border-t border-[var(--border)] flex items-center justify-between text-xs">
+				<span class="text-[var(--text-secondary)]">총 미실현 PnL</span>
+				<span class="font-mono font-semibold {totalPnl >= 0 ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'}">
+					{totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)} USD
+				</span>
+			</div>
+		{:else}
+			<p class="text-[var(--text-secondary)] text-sm py-4 text-center">포지션 없음</p>
+		{/if}
+	</div>
+
+	</div><!-- /grid Runner + Positions -->
+
+	<!-- OpenClaw Pipeline Progress -->
+	{#if pipelineSteps.length > 0 || openclawState.state !== 'idle'}
+		<div class="bg-[var(--bg-card)] border rounded-xl overflow-hidden
+			{openclawState.state === 'failed' || pipelineHasError ? 'border-[var(--accent-red)]/30' :
+			 openclawState.state === 'done' || pipelineDone ? 'border-[var(--accent-green)]/30' :
+			 'border-[var(--accent-blue)]/30'}">
 			<div class="px-4 py-3 flex items-center justify-between">
 				<div class="flex items-center gap-3">
+					{#if openclawState.state === 'running'}
+						<svg class="w-4 h-4 animate-spin text-[var(--accent-blue)]" fill="none" viewBox="0 0 24 24">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+						</svg>
+					{:else if openclawState.state === 'done'}
+						<svg class="w-4 h-4 text-[var(--accent-green)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+					{:else if openclawState.state === 'failed'}
+						<svg class="w-4 h-4 text-[var(--accent-red)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+					{/if}
 					<span class="text-sm font-semibold">
-						{#if pipelineRunning}Pipeline Running{:else if pipelineHasError}Pipeline Failed{:else}Pipeline Complete{/if}
+						{#if openclawState.state === 'running'}
+							OpenClaw 에이전트 실행 중...
+						{:else if openclawState.state === 'done'}
+							OpenClaw 파이프라인 완료
+						{:else if openclawState.state === 'failed'}
+							OpenClaw 파이프라인 실패
+						{:else}
+							Pipeline
+						{/if}
 					</span>
-					<div class="flex items-center gap-1.5">
-						{#each pipelineSteps as step}
-							<div class="w-2.5 h-2.5 rounded-full transition-colors
-								{step.status === 'done' ? 'bg-[var(--accent-green)]' :
-								 step.status === 'running' ? 'bg-[var(--accent-blue)] animate-pulse' :
-								 step.status === 'failed' ? 'bg-[var(--accent-red)]' :
-								 'bg-[var(--border)]'}"
-								title={step.label}
-							></div>
-						{/each}
-					</div>
+					{#if openclawState.state === 'running' && openclawState.startedAt}
+						<span class="text-[10px] text-[var(--text-secondary)]">{timeAgo(openclawState.startedAt)}</span>
+					{/if}
 				</div>
 				<button onclick={() => pipelineExpanded = !pipelineExpanded} class="text-xs text-[var(--text-secondary)] hover:text-white cursor-pointer">
-					{pipelineExpanded ? 'Collapse' : 'Expand'}
+					{pipelineExpanded ? '접기' : '펼치기'}
 				</button>
 			</div>
 			{#if pipelineExpanded}
-				<div class="border-t border-[var(--border)] px-4 py-3 space-y-2">
-					{#each pipelineSteps as step, i}
-						<div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--bg-secondary)]">
-							<span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
-								{step.status === 'done' ? 'bg-[var(--accent-green)]/20 text-[var(--accent-green)]' :
-								 step.status === 'running' ? 'bg-[var(--accent-blue)]/20 text-[var(--accent-blue)]' :
-								 step.status === 'failed' ? 'bg-[var(--accent-red)]/20 text-[var(--accent-red)]' :
-								 'bg-[var(--border)] text-[var(--text-secondary)]'}">
-								{#if step.status === 'done'}
-									<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-								{:else if step.status === 'failed'}
-									<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-								{:else if step.status === 'running'}
-									<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-								{:else}
-									{i + 1}
-								{/if}
-							</span>
-							<div class="flex-1 min-w-0">
-								<p class="text-sm font-medium
-									{step.status === 'done' ? 'text-[var(--accent-green)]' :
-									 step.status === 'running' ? 'text-[var(--accent-blue)]' :
-									 step.status === 'failed' ? 'text-[var(--accent-red)]' :
-									 'text-[var(--text-secondary)]'}">
-									{step.label}
-									{#if step.status === 'running'}<span class="text-xs opacity-60 ml-1">running...</span>{/if}
-								</p>
-								{#if step.result?.error}<p class="text-xs text-[var(--accent-red)] truncate">{step.result.error}</p>{/if}
-							</div>
-							{#if step.status === 'done' && step.result}<span class="text-xs text-[var(--text-secondary)]">OK</span>{/if}
+				<div class="border-t border-[var(--border)] px-4 py-3">
+					{#if openclawState.output}
+						<div class="max-h-[400px] overflow-y-auto rounded-lg bg-[var(--bg-secondary)] p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-[var(--text-secondary)]">
+							{@html formatOpenClawOutput(openclawState.output)}
 						</div>
-					{/each}
+					{:else if openclawState.state === 'running'}
+						<div class="flex items-center justify-center py-6 text-[var(--text-secondary)] text-sm">
+							<svg class="w-5 h-5 animate-spin mr-2" fill="none" viewBox="0 0 24 24">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+							</svg>
+							OpenClaw 에이전트가 트레이딩 파이프라인을 분석 중입니다...
+						</div>
+					{:else if pipelineSteps.length > 0}
+						{#each pipelineSteps as step}
+							<div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--bg-secondary)]">
+								<span class="text-sm {step.status === 'failed' ? 'text-[var(--accent-red)]' : 'text-[var(--text-secondary)]'}">{step.label}</span>
+								{#if step.result?.error}<span class="text-xs text-[var(--accent-red)]">{step.result.error}</span>{/if}
+							</div>
+						{/each}
+					{/if}
 				</div>
 			{/if}
 		</div>
 	{/if}
 
-	<!-- ═══════════ Live Prices + Spread (compact, 3s refresh) ═══════════ -->
-	{#if livePrices.length > 0}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-3 py-2">
-			<div class="flex items-center justify-between mb-1.5">
-				<div class="flex items-center gap-1.5">
-					<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></span>
-					<h2 class="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Live Prices</h2>
-				</div>
-				<span class="text-[9px] text-[var(--text-secondary)]">
-					{livePrices[0]?.timestamp ? timeAgo(livePrices[0].timestamp) : ''} &middot; 3s
-				</span>
-			</div>
-			<div class="flex flex-wrap gap-2">
-				{#each livePrices as p}
-					<div class="flex items-center gap-2 bg-[var(--bg-secondary)] rounded-md px-2.5 py-1.5 min-w-0">
-						<span class="text-xs font-bold text-white whitespace-nowrap">{p.symbol}</span>
-						<span class="text-[10px] font-mono text-[var(--accent-yellow)]">${formatPrice(p.binance_price)}</span>
-						<span class="text-[10px] font-mono text-[var(--accent-purple)]">${formatPrice(p.hl_price)}</span>
-						<span class="text-[9px] px-1 py-px rounded font-medium whitespace-nowrap
-							{Math.abs(p.spread_pct) > 0.1
-								? 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'
-								: Math.abs(p.spread_pct) > 0.05
-								? 'bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)]'
-								: 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]'
-							}">
-							{p.spread_pct >= 0 ? '+' : ''}{p.spread_pct.toFixed(3)}%
-						</span>
+	<!-- ═══════════ Live Prices + Recent Trades (side by side) ═══════════ -->
+	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+		<!-- Live Prices -->
+		{#if livePrices.length > 0}
+			<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-3 py-2">
+				<div class="flex items-center justify-between mb-1">
+					<div class="flex items-center gap-1">
+						<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></span>
+						<h2 class="text-[9px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Live Prices</h2>
 					</div>
-				{/each}
+					<span class="text-[8px] text-[var(--text-secondary)]">
+						{livePrices[0]?.timestamp ? timeAgo(livePrices[0].timestamp) : ''} &middot; 3s
+					</span>
+				</div>
+				<div class="flex flex-wrap gap-1">
+					{#each livePrices as p}
+						<div class="flex items-center gap-1 bg-[var(--bg-secondary)] rounded px-1.5 py-0.5 min-w-0">
+							<span class="text-[10px] font-bold text-white whitespace-nowrap">{p.symbol}</span>
+							<span class="text-[9px] font-mono text-[var(--accent-yellow)]">${formatPrice(p.binance_price)}</span>
+							<span class="text-[9px] font-mono text-[var(--accent-purple)]">${formatPrice(p.hl_price)}</span>
+							<span class="text-[8px] px-0.5 rounded font-medium whitespace-nowrap
+								{Math.abs(p.spread_pct) > 0.1
+									? 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'
+									: Math.abs(p.spread_pct) > 0.05
+									? 'bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)]'
+									: 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]'
+								}">
+								{p.spread_pct >= 0 ? '+' : ''}{p.spread_pct.toFixed(3)}%
+							</span>
+						</div>
+					{/each}
+				</div>
 			</div>
+		{/if}
+
+		<!-- Recent Trades -->
+		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-3 py-2">
+			<div class="flex items-center justify-between mb-1">
+				<h2 class="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Recent Trades</h2>
+				<a href="/trades" class="text-[10px] text-[var(--accent-blue)] hover:underline">View all</a>
+			</div>
+			<TradesTable trades={dashboard.recentTrades} mini {livePrices} />
 		</div>
-	{/if}
+	</div>
 
 	<!-- ═══════════ Wallet Balances + Deposit Addresses ═══════════ -->
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -599,7 +1062,7 @@
 			{/if}
 		</div>
 
-		<!-- 내 입금 지갑 주소 -->
+		<!-- 내 입금 지갑 주소 + 자동입금 -->
 		<div class="bg-[var(--bg-card)] border border-[var(--accent-green)]/30 rounded-xl p-4">
 			<div class="flex items-center gap-2 mb-3">
 				<svg class="w-4 h-4 text-[var(--accent-green)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -631,6 +1094,44 @@
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
 							{/if}
 						</button>
+					</div>
+					<!-- Arbitrum → HL 자동입금 -->
+					<div class="mt-2 pt-2 border-t border-[var(--border)]">
+						<div class="flex items-center justify-between gap-2">
+							<div class="flex items-center gap-2">
+								<span class="text-[10px] text-[var(--text-secondary)]">Arbitrum USDC:</span>
+								{#if depositChecking}
+									<span class="text-[10px] text-[var(--text-secondary)] animate-pulse">확인중...</span>
+								{:else if arbUsdcBalance !== null}
+									<span class="text-xs font-bold text-[var(--accent-green)]">${arbUsdcBalance}</span>
+								{:else}
+									<button onclick={checkArbBalance} class="text-[10px] text-[var(--accent-blue)] hover:underline cursor-pointer">잔고 확인</button>
+								{/if}
+							</div>
+							<button
+								onclick={executeDeposit}
+								disabled={depositLoading}
+								class="text-[10px] px-3 py-1.5 rounded-lg bg-[var(--accent-green)] text-black font-bold hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer disabled:cursor-wait"
+							>
+								{#if depositLoading}
+									입금 중...
+								{:else}
+									Arbitrum → HL 입금
+								{/if}
+							</button>
+						</div>
+						{#if depositResult}
+							<div class="mt-2 text-[10px] rounded p-2 {depositResult.status === 'success' ? 'bg-[var(--accent-green)]/10 text-[var(--accent-green)]' : 'bg-[var(--accent-red)]/10 text-[var(--accent-red)]'}">
+								{#if depositResult.status === 'success'}
+									입금 완료: {depositResult.amount} USDC
+									{#if depositResult.arbiscan}
+										<a href={depositResult.arbiscan} target="_blank" class="underline ml-1">Tx 보기</a>
+									{/if}
+								{:else}
+									오류: {depositResult.error || '알 수 없는 오류'}
+								{/if}
+							</div>
+						{/if}
 					</div>
 				</div>
 			{/if}
@@ -676,55 +1177,208 @@
 		<KpiCard label="Total Balance" value={liveBalances ? `$${liveBalances.total.toLocaleString(undefined, {minimumFractionDigits: 2})}` : dashboard.balance ? `$${dashboard.balance.total.toLocaleString(undefined, {minimumFractionDigits: 2})}` : 'N/A'} color="purple" sub={liveBalances ? `CB: $${liveBalances.coinbase.toFixed(0)} | HL: $${liveBalances.hyperliquid.toFixed(0)}` : dashboard.balance ? `CB: $${dashboard.balance.coinbase.toFixed(0)} | HL: $${dashboard.balance.hyperliquid.toFixed(0)}` : ''} />
 	</div>
 
-	<!-- Middle Row: Positions + Signals (10s refresh) -->
+	<!-- ═══════════ AI 분석 판단 + 거래 활동 로그 ═══════════ -->
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-		<!-- Open Positions -->
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-			<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">Open Positions</h2>
-			{#if dashboard.openPositions.length > 0}
-				<div class="space-y-2">
-					{#each dashboard.openPositions as pos}
-						<div class="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--bg-secondary)]">
-							<div class="flex items-center gap-3">
-								<span class="font-medium">{pos.symbol}</span>
-								<span class="px-2 py-0.5 rounded text-xs font-medium {pos.side === 'LONG' ? 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]' : 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'}">{pos.side}</span>
-							</div>
-							<div class="text-right">
-								<p class="text-sm font-mono">${pos.entry_price.toLocaleString()}</p>
-								<p class="text-xs text-[var(--text-secondary)]">{pos.size.toFixed(4)} @ {pos.leverage}x</p>
-							</div>
-						</div>
-					{/each}
-				</div>
-			{:else}
-				<p class="text-[var(--text-secondary)] text-sm py-4 text-center">No open positions</p>
-			{/if}
+
+	<!-- AI 분석 판단 -->
+	<div class="bg-[var(--bg-card)] border border-[var(--accent-blue)]/30 rounded-xl p-4">
+		<div class="flex items-center justify-between mb-4">
+			<div class="flex items-center gap-2">
+				<svg class="w-5 h-5 text-[var(--accent-blue)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+				</svg>
+				<h2 class="text-sm font-bold uppercase tracking-wider">AI 분석 판단</h2>
+				{#if signals?.generated_at}
+					<span class="text-[10px] text-[var(--text-secondary)]">{timeAgo(signals.generated_at)}</span>
+				{/if}
+			</div>
+			<div class="flex items-center gap-2">
+				{#if signals?.signals}
+					{@const longCount = signals.signals.filter((s: any) => s.action === 'LONG').length}
+					{@const shortCount = signals.signals.filter((s: any) => s.action === 'SHORT').length}
+					{@const holdCount = signals.signals.filter((s: any) => s.action === 'HOLD').length}
+					<span class="text-[10px] px-2 py-0.5 rounded bg-[var(--accent-green)]/15 text-[var(--accent-green)] font-medium">LONG {longCount}</span>
+					<span class="text-[10px] px-2 py-0.5 rounded bg-[var(--accent-red)]/15 text-[var(--accent-red)] font-medium">SHORT {shortCount}</span>
+					<span class="text-[10px] px-2 py-0.5 rounded bg-[var(--border)]/50 text-[var(--text-secondary)] font-medium">HOLD {holdCount}</span>
+				{/if}
+			</div>
 		</div>
 
-		<!-- Current Signals -->
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-			<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">Latest Signals</h2>
-			{#if signals?.signals}
-				<div class="space-y-3">
-					{#each signals.signals as sig}
-						<div class="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--bg-secondary)]">
-							<div class="flex items-center gap-3">
-								<span class="font-medium">{sig.symbol}</span>
-								<SignalBadge action={sig.action} confidence={sig.confidence} />
-							</div>
-							<div class="text-right text-sm">
-								<p class="font-mono">${sig.entry_price.toLocaleString()}</p>
-								<p class="text-xs text-[var(--text-secondary)]">Score: {sig.analysis?.composite_score?.toFixed(3) ?? '-'}</p>
-							</div>
+		{#if signals?.signals}
+			<!-- 시그널 상세 (LONG/SHORT만 표시, HOLD 접기) -->
+			{@const activeSignals = signals.signals.filter((s: any) => s.action !== 'HOLD')}
+			{@const holdSignals = signals.signals.filter((s: any) => s.action === 'HOLD')}
+
+			{#if activeSignals.length > 0}
+				<div class="space-y-2 mb-3">
+					{#each activeSignals as sig}
+						<div class="rounded-lg bg-[var(--bg-secondary)] overflow-hidden">
+							<!-- 시그널 헤더 (클릭하면 상세 열림) -->
+							<button
+								onclick={() => signalExpanded = signalExpanded === sig.symbol ? null : sig.symbol}
+								class="w-full flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-[var(--border)]/20 transition-colors"
+							>
+								<div class="flex items-center gap-3">
+									<span class="text-sm font-bold">{sig.symbol}</span>
+									<SignalBadge action={sig.action} confidence={sig.confidence} />
+									<span class="text-[10px] font-mono text-[var(--text-secondary)]">Score: {sig.analysis?.composite_score?.toFixed(3) ?? '-'}</span>
+								</div>
+								<div class="flex items-center gap-3">
+									<div class="text-right">
+										<span class="text-xs font-mono">${formatPrice(sig.entry_price)}</span>
+										{#if sig.stop_loss && sig.take_profit}
+											<span class="text-[9px] text-[var(--text-secondary)] ml-2">SL ${formatPrice(sig.stop_loss)} / TP ${formatPrice(sig.take_profit)}</span>
+										{/if}
+									</div>
+									<svg class="w-4 h-4 text-[var(--text-secondary)] transition-transform {signalExpanded === sig.symbol ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+									</svg>
+								</div>
+							</button>
+
+							<!-- 지표 상세 (열렸을 때) -->
+							{#if signalExpanded === sig.symbol && sig.analysis}
+								<div class="border-t border-[var(--border)] px-3 py-3">
+									<div class="grid grid-cols-5 gap-2">
+										<!-- Spread -->
+										<div class="text-center">
+											<p class="text-[9px] text-[var(--text-secondary)] uppercase mb-1">Spread</p>
+											<p class="text-xs font-mono font-bold
+												{sig.analysis.spread?.signal?.includes('LONG') ? 'text-[var(--accent-green)]' :
+												 sig.analysis.spread?.signal?.includes('SHORT') ? 'text-[var(--accent-red)]' :
+												 'text-[var(--text-secondary)]'}">
+												{sig.analysis.spread?.signal ?? '-'}
+											</p>
+											<p class="text-[9px] text-[var(--text-secondary)]">
+												{sig.analysis.spread?.value_pct != null ? (sig.analysis.spread.value_pct * 100).toFixed(3) + '%' : '-'}
+											</p>
+										</div>
+										<!-- RSI -->
+										<div class="text-center">
+											<p class="text-[9px] text-[var(--text-secondary)] uppercase mb-1">RSI</p>
+											<p class="text-xs font-mono font-bold
+												{sig.analysis.rsi?.signal?.includes('LONG') ? 'text-[var(--accent-green)]' :
+												 sig.analysis.rsi?.signal?.includes('SHORT') ? 'text-[var(--accent-red)]' :
+												 'text-[var(--text-secondary)]'}">
+												{sig.analysis.rsi?.signal ?? '-'}
+											</p>
+											<p class="text-[9px] text-[var(--text-secondary)]">{sig.analysis.rsi?.value?.toFixed(1) ?? '-'}</p>
+										</div>
+										<!-- MACD -->
+										<div class="text-center">
+											<p class="text-[9px] text-[var(--text-secondary)] uppercase mb-1">MACD</p>
+											<p class="text-xs font-mono font-bold
+												{sig.analysis.macd?.signal?.includes('LONG') ? 'text-[var(--accent-green)]' :
+												 sig.analysis.macd?.signal?.includes('SHORT') ? 'text-[var(--accent-red)]' :
+												 'text-[var(--text-secondary)]'}">
+												{sig.analysis.macd?.signal ?? '-'}
+											</p>
+											<p class="text-[9px] text-[var(--text-secondary)]">H: {sig.analysis.macd?.histogram?.toFixed(2) ?? '-'}</p>
+										</div>
+										<!-- Bollinger -->
+										<div class="text-center">
+											<p class="text-[9px] text-[var(--text-secondary)] uppercase mb-1">BB</p>
+											<p class="text-xs font-mono font-bold
+												{sig.analysis.bollinger?.signal?.includes('LONG') ? 'text-[var(--accent-green)]' :
+												 sig.analysis.bollinger?.signal?.includes('SHORT') ? 'text-[var(--accent-red)]' :
+												 'text-[var(--text-secondary)]'}">
+												{sig.analysis.bollinger?.signal ?? '-'}
+											</p>
+											<p class="text-[9px] text-[var(--text-secondary)]">{sig.analysis.bollinger?.position ?? '-'}</p>
+										</div>
+										<!-- MA -->
+										<div class="text-center">
+											<p class="text-[9px] text-[var(--text-secondary)] uppercase mb-1">MA</p>
+											<p class="text-xs font-mono font-bold
+												{sig.analysis.ma?.signal?.includes('LONG') ? 'text-[var(--accent-green)]' :
+												 sig.analysis.ma?.signal?.includes('SHORT') ? 'text-[var(--accent-red)]' :
+												 'text-[var(--text-secondary)]'}">
+												{sig.analysis.ma?.signal ?? '-'}
+											</p>
+											<p class="text-[9px] text-[var(--text-secondary)]">
+												{sig.analysis.ma?.ma_7?.toFixed(0) ?? '-'}/{sig.analysis.ma?.ma_25?.toFixed(0) ?? '-'}
+											</p>
+										</div>
+									</div>
+
+									<!-- 판단 요약 -->
+									<div class="mt-3 pt-2 border-t border-[var(--border)]">
+										<p class="text-[10px] text-[var(--text-secondary)]">
+											<strong class="text-white">판단 근거:</strong>
+											Composite Score <strong class="{sig.analysis.composite_score > 0 ? 'text-[var(--accent-green)]' : sig.analysis.composite_score < 0 ? 'text-[var(--accent-red)]' : 'text-white'}">{sig.analysis.composite_score?.toFixed(3)}</strong>
+											{#if sig.action === 'LONG'}
+												→ 임계값({activeStrategy.name === 'aggressive' ? '0.15' : activeStrategy.name === 'conservative' ? '0.50' : '0.30'}) 초과하여 <strong class="text-[var(--accent-green)]">매수 진입</strong>
+											{:else if sig.action === 'SHORT'}
+												→ 임계값 하회하여 <strong class="text-[var(--accent-red)]">매도 진입</strong>
+											{/if}
+											{#if sig.risk?.atr}
+												| ATR: {sig.risk.atr.toFixed(2)} | R:R: {sig.risk.risk_reward_ratio?.toFixed(1)}
+											{/if}
+										</p>
+									</div>
+								</div>
+							{/if}
 						</div>
 					{/each}
 				</div>
-				<p class="text-xs text-[var(--text-secondary)] mt-2">Generated: {new Date(signals.generated_at).toLocaleTimeString('ko-KR')}</p>
 			{:else}
-				<p class="text-[var(--text-secondary)] text-sm py-4 text-center">No signals available</p>
+				<p class="text-[var(--text-secondary)] text-xs py-2 text-center">모든 코인이 HOLD — 진입 조건 미충족</p>
 			{/if}
-		</div>
+
+			<!-- HOLD 시그널 축약 -->
+			{#if holdSignals.length > 0}
+				<div class="flex flex-wrap gap-1 mt-1">
+					<span class="text-[9px] text-[var(--text-secondary)] mr-1">HOLD:</span>
+					{#each holdSignals.slice(0, 20) as sig}
+						<span class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-secondary)] font-mono">{sig.symbol}</span>
+					{/each}
+					{#if holdSignals.length > 20}
+						<span class="text-[9px] text-[var(--text-secondary)]">+{holdSignals.length - 20}개</span>
+					{/if}
+				</div>
+			{/if}
+		{:else}
+			<p class="text-[var(--text-secondary)] text-sm py-4 text-center">시그널 없음 — 가격 수집 후 분석을 실행하세요</p>
+		{/if}
 	</div>
+
+	<!-- 거래 활동 로그 -->
+	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="flex items-center justify-between mb-3">
+			<div class="flex items-center gap-2">
+				<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">거래 활동 로그</h2>
+				{#if runnerActive}
+					<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></span>
+				{/if}
+			</div>
+			<span class="text-[9px] text-[var(--text-secondary)]">10s refresh</span>
+		</div>
+		{#if runnerLog.length > 0}
+			<div class="h-[320px] overflow-y-auto rounded-lg bg-[var(--bg-secondary)] p-2 font-mono text-[10px] leading-relaxed space-y-px">
+				{#each [...runnerLog].reverse() as line}
+					<p class="
+						{line.includes('ERROR') || line.includes('error') || line.includes('실패')
+							? 'text-[var(--accent-red)]'
+							: line.includes('LONG') || line.includes('매수') || line.includes('성공')
+							? 'text-[var(--accent-green)]'
+							: line.includes('SHORT') || line.includes('매도')
+							? 'text-[var(--accent-yellow)]'
+							: line.includes('HOLD') || line.includes('스킵')
+							? 'text-[var(--text-secondary)] opacity-60'
+							: line.includes('cycle') || line.includes('사이클') || line.includes('===')
+							? 'text-[var(--accent-blue)]'
+							: 'text-[var(--text-secondary)]'
+						}">{line}</p>
+				{/each}
+			</div>
+		{:else}
+			<div class="h-[320px] flex items-center justify-center text-[var(--text-secondary)] text-xs">
+				<p>자동매매를 시작하면 여기에 실시간 로그가 표시됩니다</p>
+			</div>
+		{/if}
+	</div>
+
+	</div><!-- /grid AI분석 + 로그 -->
 
 	<!-- Price Charts (60s refresh) -->
 	{#if chartData.BTC && chartData.BTC.length > 0}
@@ -772,15 +1426,6 @@
 			</p>
 		</div>
 	{/if}
-
-	<!-- Recent Trades (10s refresh) -->
-	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-		<div class="flex items-center justify-between mb-3">
-			<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Recent Trades</h2>
-			<a href="/trades" class="text-xs text-[var(--accent-blue)] hover:underline">View all</a>
-		</div>
-		<TradesTable trades={dashboard.recentTrades} compact />
-	</div>
 
 	<!-- Refresh Info -->
 	<div class="text-center text-[10px] text-[var(--text-secondary)] py-1">

@@ -80,7 +80,8 @@ export class HyperliquidService {
 
   async initWallet(privateKey: string): Promise<void> {
     const viemAccounts = await import("viem/accounts") as any;
-    const account = viemAccounts.privateKeyToAccount(privateKey as `0x${string}`);
+    const formattedKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
+    const account = viemAccounts.privateKeyToAccount(formattedKey as `0x${string}`);
     this.userAddress = account.address;
 
     const config = loadConfig();
@@ -152,6 +153,79 @@ export class HyperliquidService {
     return asset?.szDecimals ?? 3;
   }
 
+  // ─── Market Data (AI 판단용) ───
+
+  async getMetaAndAssetCtxs(): Promise<Array<{
+    coin: string;
+    funding: number;
+    openInterest: number;
+    premium: number;
+    oraclePx: number;
+    markPx: number;
+    midPx: number;
+    dayNtlVlm: number;
+    impactBid: number;
+    impactAsk: number;
+  }>> {
+    const rl = getHyperliquidRateLimiter();
+    await rl.acquire(2);
+    try {
+      const transport = new HttpTransport({
+        apiUrl: loadConfig().trade_agent.hyperliquid.base_url,
+      });
+      const response = await fetch(loadConfig().trade_agent.hyperliquid.base_url + "/info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "metaAndAssetCtxs" }),
+      });
+      const raw = await response.json() as any[];
+      if (!raw || raw.length < 2) return [];
+
+      const universe = raw[0]?.universe || [];
+      const contexts = raw[1] || [];
+
+      return universe.map((u: any, i: number) => {
+        const ctx = contexts[i] || {};
+        return {
+          coin: u.name,
+          funding: parseFloat(ctx.funding || "0"),
+          openInterest: parseFloat(ctx.openInterest || "0"),
+          premium: parseFloat(ctx.premium || "0"),
+          oraclePx: parseFloat(ctx.oraclePx || "0"),
+          markPx: parseFloat(ctx.markPx || "0"),
+          midPx: parseFloat(ctx.midPx || "0"),
+          dayNtlVlm: parseFloat(ctx.dayNtlVlm || "0"),
+          impactBid: ctx.impactPxs ? parseFloat(ctx.impactPxs[0] || "0") : 0,
+          impactAsk: ctx.impactPxs ? parseFloat(ctx.impactPxs[1] || "0") : 0,
+        };
+      });
+    } catch (err) {
+      logger.warn("metaAndAssetCtxs 조회 실패", { error: err instanceof Error ? err.message : String(err) });
+      return [];
+    }
+  }
+
+  async getFundingHistory(coin: string, limit: number = 8): Promise<Array<{
+    fundingRate: number; premium: number; time: number;
+  }>> {
+    const rl = getHyperliquidRateLimiter();
+    await rl.acquire(2);
+    try {
+      const startTime = Date.now() - (limit * 8 * 3600 * 1000);
+      const response = await fetch(loadConfig().trade_agent.hyperliquid.base_url + "/info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "fundingHistory", coin, startTime }),
+      });
+      const data = await response.json() as any[];
+      return (data || []).slice(-limit).map((d: any) => ({
+        fundingRate: parseFloat(d.fundingRate || "0"),
+        premium: parseFloat(d.premium || "0"),
+        time: d.time,
+      }));
+    } catch { return []; }
+  }
+
   // ─── User State ───
 
   async getUserState(): Promise<HlUserState> {
@@ -164,6 +238,16 @@ export class HyperliquidService {
   }
 
   async getBalance(): Promise<number> {
+    const state = await this.getUserState();
+    const perpBalance = parseFloat(state.marginSummary.accountValue);
+    const spotBalance = await this.getSpotBalance().catch(() => 0);
+    // perpBalance가 spotBalance 이상이면 Unified Account에서 이미 합산된 값
+    // perpBalance < spotBalance이면 perp에는 마진/PnL만 있고 spot은 별도 → 합산
+    if (perpBalance >= spotBalance) return perpBalance;
+    return perpBalance + spotBalance;
+  }
+
+  async getPerpBalance(): Promise<number> {
     const state = await this.getUserState();
     return parseFloat(state.marginSummary.accountValue);
   }
@@ -199,10 +283,12 @@ export class HyperliquidService {
     }
 
     const config = loadConfig();
-    const slippage = config.trade_agent.hyperliquid.slippage;
+    const baseSlippage = config.trade_agent.hyperliquid.slippage;
+    const slippage = reduceOnly ? Math.max(baseSlippage * 3, 0.03) : baseSlippage;
+    const pxDecimals = midPrice >= 1000 ? 1 : midPrice >= 1 ? 2 : midPrice >= 0.01 ? 4 : 6;
     const limitPx = isBuy
-      ? (midPrice * (1 + slippage)).toFixed(1)
-      : (midPrice * (1 - slippage)).toFixed(1);
+      ? (midPrice * (1 + slippage)).toFixed(pxDecimals)
+      : (midPrice * (1 - slippage)).toFixed(pxDecimals);
 
     logger.info("시장가 주문 실행", { coin, isBuy, size: formattedSize, reduceOnly, limitPx });
 
@@ -281,6 +367,35 @@ export class HyperliquidService {
         logger.error("포지션 청산 실패", { coin, error: msg });
       }
     }
+  }
+
+  // ─── Spot ↔ Perps Transfer ───
+
+  async spotToPerp(amount: string): Promise<{ status: string; response?: unknown }> {
+    if (!this.exchangeClient) throw new Error("지갑이 초기화되지 않았습니다");
+    logger.info("Spot → Perp 전송", { amount });
+    const result = await this.exchangeClient.usdClassTransfer({ amount, toPerp: true });
+    logger.info("Spot → Perp 결과", result);
+    return result as { status: string; response?: unknown };
+  }
+
+  async perpToSpot(amount: string): Promise<{ status: string; response?: unknown }> {
+    if (!this.exchangeClient) throw new Error("지갑이 초기화되지 않았습니다");
+    logger.info("Perp → Spot 전송", { amount });
+    const result = await this.exchangeClient.usdClassTransfer({ amount, toPerp: false });
+    logger.info("Perp → Spot 결과", result);
+    return result as { status: string; response?: unknown };
+  }
+
+  async getSpotBalance(): Promise<number> {
+    if (!this.userAddress) throw new Error("지갑이 초기화되지 않았습니다");
+    const rl = getHyperliquidRateLimiter();
+    await rl.acquire(1);
+    const state = await this.infoClient.spotClearinghouseState({
+      user: this.userAddress as `0x${string}`,
+    }) as { balances: Array<{ coin: string; total: string }> };
+    const usdc = state.balances.find(b => b.coin === "USDC");
+    return usdc ? parseFloat(usdc.total) : 0;
   }
 
   // ─── Withdraw (HL → External) ───

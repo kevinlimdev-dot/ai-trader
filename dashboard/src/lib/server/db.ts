@@ -10,7 +10,7 @@ let db: Database | null = null;
 
 function getDb(): Database {
 	if (!db) {
-		db = new Database(DB_PATH, { readonly: true });
+		db = new Database(DB_PATH);
 		db.exec('PRAGMA journal_mode=WAL');
 	}
 	return db;
@@ -35,29 +35,44 @@ export function isKillSwitchActive(): boolean {
 
 // ─── Dashboard KPI ───
 
-export function getDashboardData() {
+export function getDashboardData(hlPositions?: { coin: string; side: string; unrealizedPnl: number; returnOnEquity: number }[]) {
 	const d = getDb();
 	const today = new Date().toISOString().split('T')[0];
 
 	const todayTrades = d.query(`SELECT * FROM trades WHERE date(timestamp_open) = ?`).all(today) as any[];
+	// external_close는 봇이 아닌 외부에서 청산된 것이므로 실제 거래 카운트에서 제외
+	const realTrades = todayTrades.filter((t: any) => t.exit_reason !== 'external_close');
 	const openTrades = d.query(`SELECT * FROM trades WHERE status IN ('open', 'paper')`).all() as any[];
 	const latestBalance = d.query(`SELECT * FROM balance_snapshots ORDER BY id DESC LIMIT 1`).get() as any | null;
-	const todayPnl = todayTrades.filter((t: any) => t.pnl !== null).reduce((sum: number, t: any) => sum + (t.pnl || 0), 0);
-	const todayFees = todayTrades.filter((t: any) => t.fees !== null).reduce((sum: number, t: any) => sum + (t.fees || 0), 0);
-	const closedToday = todayTrades.filter((t: any) => t.status === 'closed');
+	const todayPnl = realTrades.filter((t: any) => t.pnl !== null).reduce((sum: number, t: any) => sum + (t.pnl || 0), 0);
+	const todayFees = realTrades.filter((t: any) => t.fees !== null).reduce((sum: number, t: any) => sum + (t.fees || 0), 0);
+	const closedToday = realTrades.filter((t: any) => t.status === 'closed');
 	const wins = closedToday.filter((t: any) => t.pnl > 0).length;
 	const winRate = closedToday.length > 0 ? (wins / closedToday.length) * 100 : 0;
 
-	const recentTrades = d.query(`SELECT * FROM trades ORDER BY id DESC LIMIT 10`).all() as any[];
+	const recentTrades = d.query(`SELECT * FROM trades ORDER BY id DESC LIMIT 40`).all() as any[];
+
+	// HL 실시간 데이터로 open 거래 PnL 보강
+	if (hlPositions && hlPositions.length > 0) {
+		for (const trade of recentTrades) {
+			if (trade.status === 'open' || trade.status === 'paper') {
+				const hlMatch = hlPositions.find(p => p.coin === trade.symbol && p.side === trade.side);
+				if (hlMatch) {
+					trade.pnl = hlMatch.unrealizedPnl;
+					trade.hl_live = true;
+				}
+			}
+		}
+	}
 
 	return {
 		mode: getMode(),
 		killSwitch: isKillSwitchActive(),
 		todayPnl,
 		todayFees,
-		todayTradeCount: todayTrades.length,
+		todayTradeCount: realTrades.length,
 		winRate: Math.round(winRate * 10) / 10,
-		openPositionCount: openTrades.length,
+		openPositionCount: hlPositions ? hlPositions.length : openTrades.length,
 		openPositions: openTrades,
 		balance: latestBalance ? {
 			coinbase: latestBalance.coinbase_balance as number,
@@ -352,7 +367,9 @@ async function fetchHlBalance(): Promise<HlBalanceDetail> {
 			}
 		}
 
-		const totalUsd = perpVal + spotTotalUsd;
+		// perpVal(accountValue)가 spotTotalUsd 이상이면 Unified Account에서 이미 합산된 값
+		// perpVal < spotTotalUsd이면 perp에는 포지션 마진/PnL만 있고 spot은 별도 → 합산
+		const totalUsd = perpVal >= spotTotalUsd ? perpVal : perpVal + spotTotalUsd;
 		console.log(`[HL Balance] ${account.address} -> perp: $${perpVal.toFixed(2)}, spot: $${spotTotalUsd.toFixed(2)} (${spotBalances.map(s => `${s.coin}: ${s.total}`).join(', ')}), total: $${totalUsd.toFixed(2)}`);
 
 		return { perp: perpVal, spot: spotBalances, spotTotalUsd, totalUsd };
@@ -382,6 +399,145 @@ export async function getLiveBalances(): Promise<LiveBalance & { hlDetail?: HlBa
 	liveBalanceFetchedAt = now;
 
 	return cachedLiveBalance;
+}
+
+// ─── HyperLiquid 실시간 포지션 조회 ───
+
+export interface HlLivePosition {
+	coin: string;
+	side: 'LONG' | 'SHORT';
+	size: number;
+	entryPx: number;
+	positionValue: number;
+	unrealizedPnl: number;
+	leverage: number;
+	leverageType: string;
+	liquidationPx: number | null;
+	marginUsed: number;
+	returnOnEquity: number;
+}
+
+let cachedHlPositions: HlLivePosition[] = [];
+let hlPositionsFetchedAt = 0;
+const HL_POSITIONS_CACHE_TTL = 5_000; // 5초 캐시
+
+export async function getHlLivePositions(): Promise<HlLivePosition[]> {
+	const now = Date.now();
+	if (cachedHlPositions.length >= 0 && (now - hlPositionsFetchedAt) < HL_POSITIONS_CACHE_TTL && hlPositionsFetchedAt > 0) {
+		return cachedHlPositions;
+	}
+
+	try {
+		const envPath = resolve(PROJECT_ROOT, '.env');
+		if (!existsSync(envPath)) return [];
+
+		const envContent = readFileSync(envPath, 'utf-8');
+		let privateKey = '';
+		for (const line of envContent.split('\n')) {
+			const trimmed = line.trim();
+			if (trimmed.startsWith('HYPERLIQUID_PRIVATE_KEY=')) {
+				privateKey = trimmed.slice('HYPERLIQUID_PRIVATE_KEY='.length).trim();
+			}
+		}
+
+		if (!privateKey || privateKey === '0xyour_private_key' || privateKey.length < 10) return [];
+
+		const { privateKeyToAccount } = await import('viem/accounts');
+		const formattedKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
+		const account = privateKeyToAccount(formattedKey as `0x${string}`);
+
+		const { HttpTransport, InfoClient } = await import('@nktkas/hyperliquid');
+		const configData = getConfig() as { trade_agent?: { hyperliquid?: { base_url?: string } } };
+		const baseUrl = configData?.trade_agent?.hyperliquid?.base_url || 'https://api.hyperliquid.xyz';
+
+		const transport = new HttpTransport({ apiUrl: baseUrl });
+		const infoClient = new InfoClient({ transport });
+
+		const timeout = <T>(p: Promise<T>, ms: number, label: string) =>
+			Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`${label} timeout`)), ms))]);
+
+		const state = await timeout(
+			infoClient.clearinghouseState({ user: account.address }),
+			10_000,
+			'positions'
+		) as any;
+
+		if (!state?.assetPositions) {
+			cachedHlPositions = [];
+			hlPositionsFetchedAt = now;
+			return [];
+		}
+
+		const positions: HlLivePosition[] = [];
+		for (const ap of state.assetPositions) {
+			const pos = ap.position;
+			const szi = parseFloat(pos.szi);
+			if (szi === 0) continue;
+
+			const entryPx = parseFloat(pos.entryPx) || 0;
+			const positionValue = parseFloat(pos.positionValue) || 0;
+			const unrealizedPnl = parseFloat(pos.unrealizedPnl) || 0;
+			const liquidationPx = pos.liquidationPx ? parseFloat(pos.liquidationPx) : null;
+			const leverage = pos.leverage?.value || 1;
+			const leverageType = pos.leverage?.type || 'cross';
+			const marginUsed = parseFloat(pos.marginUsed) || 0;
+			const returnOnEquity = parseFloat(pos.returnOnEquity) || 0;
+
+			positions.push({
+				coin: pos.coin,
+				side: szi > 0 ? 'LONG' : 'SHORT',
+				size: Math.abs(szi),
+				entryPx,
+				positionValue,
+				unrealizedPnl,
+				leverage,
+				leverageType,
+				liquidationPx,
+				marginUsed,
+				returnOnEquity,
+			});
+		}
+
+		cachedHlPositions = positions;
+		hlPositionsFetchedAt = now;
+		return positions;
+	} catch (err) {
+		console.error('[HL Positions error]', err instanceof Error ? err.message : err);
+		return cachedHlPositions; // 에러 시 캐시 반환
+	}
+}
+
+// DB 포지션과 HL 실제 포지션 동기화
+export function syncPositionsWithHl(hlPositions: HlLivePosition[]): { synced: number; closed: number; updated: number } {
+	const result = { synced: 0, closed: 0, updated: 0 };
+	try {
+		const d = getDb();
+		const openTrades = d.query(`SELECT * FROM trades WHERE status IN ('open', 'paper')`).all() as any[];
+
+		for (const trade of openTrades) {
+			// 코인 + 방향으로 정확히 매칭
+			const hlMatch = hlPositions.find(p =>
+				p.coin === trade.symbol && p.side === trade.side
+			);
+
+			if (!hlMatch) {
+				// HL에 해당 방향 포지션이 없으면 외부에서 청산된 것
+				d.query(`UPDATE trades SET status = 'closed', exit_reason = 'external_close', timestamp_close = ? WHERE id = ?`)
+					.run(new Date().toISOString(), trade.id);
+				console.log(`[Sync] ${trade.symbol} ${trade.side} (id: ${trade.id}) 외부 청산 감지 → closed`);
+				result.closed++;
+			} else {
+				// 매칭된 포지션의 미실현 PnL 업데이트
+				d.query(`UPDATE trades SET pnl = ?, peak_pnl_pct = ? WHERE id = ?`)
+					.run(hlMatch.unrealizedPnl, hlMatch.returnOnEquity * 100, trade.id);
+				result.updated++;
+			}
+			result.synced++;
+		}
+	} catch (err) {
+		console.error('[Position Sync error]', err instanceof Error ? err.message : err);
+	}
+	return result;
 }
 
 // ─── Available Trading Coins (HyperLiquid meta) ───

@@ -87,7 +87,10 @@ PriceSnapshot → 스프레드 분석 → 기술적 지표 → 복합 점수 →
 
 ### 3.1 복합 점수 산출
 
+기본 가중치는 아래와 같으며, **전략 프리셋**(`src/strategies/presets.ts`)에 따라 오버라이드된다:
+
 ```typescript
+// 기본 가중치 (Balanced 기준)
 const WEIGHTS = {
   spread: 0.30,    // 핵심 전략
   rsi: 0.15,
@@ -102,10 +105,16 @@ const SCORE_MAP: Record<string, number> = {
   SHORT_BIAS: -1, SHORT: -1, STRONG_SHORT: -2,
 };
 
-// composite_score >= 0.5 → LONG
-// composite_score <= -0.5 → SHORT
+// 진입 임계값 — 전략별로 다름:
+//   Conservative: 0.5 (엄격)
+//   Balanced:     0.3 (기본)
+//   Aggressive:   0.15 (적극)
+// composite_score >= threshold → LONG
+// composite_score <= -threshold → SHORT
 // 그 외 → HOLD
 ```
+
+> **전략 적용**: `analyze.ts` 실행 시 `config.yaml`의 `general.strategy` 값을 읽고, 해당 전략의 `analysisOverrides`(가중치, RSI 기간/임계값 등)를 기본 설정에 병합하여 분석한다. 상세는 [09-strategy.md](./09-strategy.md) 참조.
 
 ### 3.2 손절/익절 (ATR 기반)
 
@@ -175,13 +184,59 @@ analysis_agent:
 
 ---
 
-## 6. 스크립트 구조
+## 6. AI 자율 판단과의 연계
+
+`analyzer`가 생성한 시그널(`data/signals/latest.json`)은 **ai-decision** 스킬에 의해 추가 필터링된다:
+
+```
+analyze.ts 출력 (기술적 분석)
+     │
+     ▼ data/signals/latest.json
+     │
+summarize.ts (기술적 분석 + 시장 심리 종합)
+     │
+     ▼ OpenClaw AI가 분석 후 결정
+     │
+apply-decision.ts (AI 결정 적용)
+     │
+     ▼ data/signals/latest.json (AI 필터링 완료)
+     │
+execute-trade.ts (AI가 승인한 시그널만 실행)
+```
+
+### 6.1 AI 필터링 후 시그널 변화
+
+```json
+{
+  "symbol": "BTC",
+  "action": "LONG",
+  "confidence": 0.85,
+  "ai_reviewed": true,
+  "ai_review_at": "2026-02-16T12:00:00Z",
+  "ai_reason": "RSI 30 반등 + 스마트머니 롱 + 군중 숏 치우침(역발상) + 펀딩비 음수(수취 유리)",
+  "ai_summary": "기술적 분석과 시장 심리 모두 롱 방향 합류"
+}
+```
+
+AI가 거부한 시그널은 `action: "HOLD"`로 변경되며, `ai_reason`에 거부 사유가 기록된다.
+
+> **상세:** AI 자율 판단 시스템의 전체 스펙은 [10-ai-decision.md](./10-ai-decision.md) 참조.
+
+---
+
+## 7. 스크립트 구조
 
 ```
 skills/analyzer/
 ├── SKILL.md
 └── scripts/
     └── analyze.ts
+
+skills/ai-decision/                # AI 판단 후처리 (NEW)
+└── scripts/
+    ├── collect-sentiment.ts       # 시장 심리 수집
+    ├── summarize.ts               # 종합 요약
+    └── apply-decision.ts          # AI 결정 적용
 ```
 
 ---
@@ -190,3 +245,4 @@ skills/analyzer/
 
 - [02-data-agent.md](./02-data-agent.md) — data-collector 스킬 (데이터 제공자)
 - [04-trade-agent.md](./04-trade-agent.md) — trader 스킬 (시그널 소비자)
+- [10-ai-decision.md](./10-ai-decision.md) — AI 자율 투자 판단 시스템

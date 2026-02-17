@@ -69,9 +69,16 @@ async function sendIpc(channel, data = {}) {
 // ─── 캐시 기록 ───
 
 function writeCache(cache) {
-  const tmp = CACHE_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(cache, null, 2));
-  fs.renameSync(tmp, CACHE_FILE);
+  try {
+    const tmp = CACHE_FILE + '.' + process.pid + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(cache, null, 2));
+    fs.renameSync(tmp, CACHE_FILE);
+  } catch (err) {
+    // rename 실패 시 직접 쓰기 fallback
+    try {
+      fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
+    } catch {}
+  }
 }
 
 // ─── 메인 루프 ───
@@ -138,11 +145,23 @@ async function loop() {
   console.log('[awal-sidecar] started — polling every', POLL_INTERVAL / 1000, 'seconds');
   console.log('[awal-sidecar] cache file:', CACHE_FILE);
 
+  let lastError = '';
+  let errorCount = 0;
+
   while (true) {
     try {
       await refresh();
+      if (errorCount > 0) {
+        console.log('[sidecar] recovered after', errorCount, 'errors');
+        errorCount = 0;
+        lastError = '';
+      }
     } catch (err) {
-      console.error('[sidecar] unexpected error:', err.message);
+      errorCount++;
+      if (err.message !== lastError || errorCount % 20 === 1) {
+        console.error('[sidecar] error (' + errorCount + 'x):', err.message);
+        lastError = err.message;
+      }
     }
     await new Promise(r => setTimeout(r, POLL_INTERVAL));
   }

@@ -5,9 +5,12 @@ export type ExitReason =
   | "stop_loss"
   | "trailing_stop"
   | "manual"
+  | "manual_close"
+  | "signal_reverse"
   | "emergency"
   | "kill_switch"
-  | "daily_loss_limit";
+  | "daily_loss_limit"
+  | "external_close";
 
 export interface TradeRecord {
   id?: number;

@@ -9,10 +9,11 @@
 import { resolve } from "path";
 import { existsSync, readFileSync } from "fs";
 import { RSI, MACD, BollingerBands, SMA, ATR } from "technicalindicators";
-import { loadConfig, getProjectRoot } from "../../../src/utils/config";
+import { loadConfig, getProjectRoot, getStrategy } from "../../../src/utils/config";
 import { createLogger } from "../../../src/utils/logger";
 import { atomicWrite } from "../../../src/utils/file";
 import { getClosePrices, getLastSignalTime, closeDb } from "../../../src/db/repository";
+import { getStrategyPreset, type AnalysisOverrides } from "../../../src/strategies/presets";
 import type { SnapshotCollection, PriceSnapshot } from "../../../src/models/price-snapshot";
 import type {
   TradeSignal,
@@ -22,6 +23,9 @@ import type {
 } from "../../../src/models/trade-signal";
 
 const logger = createLogger("Analyzer");
+
+// ─── Strategy Overrides (initialized in main) ───
+let strategyOverrides: AnalysisOverrides | null = null;
 
 // ─── Graceful Shutdown ───
 function setupGracefulShutdown(): void {
@@ -88,9 +92,12 @@ function analyzeRSI(closes: number[]): { value: number; signal: IndicatorSignal 
   const rsiValues = RSI.calculate({ values: closes, period });
   const value = rsiValues[rsiValues.length - 1] ?? 50;
 
+  const overbought = strategyOverrides?.rsi.overbought ?? config.analysis_agent.indicators.rsi.overbought;
+  const oversold = strategyOverrides?.rsi.oversold ?? config.analysis_agent.indicators.rsi.oversold;
+
   let signal: IndicatorSignal = "NEUTRAL";
-  if (value <= config.analysis_agent.indicators.rsi.oversold) signal = "LONG";
-  else if (value >= config.analysis_agent.indicators.rsi.overbought) signal = "SHORT";
+  if (value <= oversold) signal = "LONG";
+  else if (value >= overbought) signal = "SHORT";
 
   return { value, signal };
 }
@@ -233,7 +240,7 @@ function computeCompositeScore(
   signals: Record<string, IndicatorSignal>,
 ): number {
   const config = loadConfig();
-  const weights = config.analysis_agent.weights;
+  const weights = strategyOverrides?.weights ?? config.analysis_agent.weights;
 
   let totalScore = 0;
   let totalWeight = 0;
@@ -284,7 +291,7 @@ function analyzeSymbol(snapshot: PriceSnapshot, historicalCloses: number[]): Tra
 
   // 시그널 결정
   let action: "LONG" | "SHORT" | "HOLD" = "HOLD";
-  const threshold = config.analysis_agent.signal.entry_threshold;
+  const threshold = strategyOverrides?.signal.entry_threshold ?? config.analysis_agent.signal.entry_threshold;
 
   if (compositeScore >= threshold) action = "LONG";
   else if (compositeScore <= -threshold) action = "SHORT";
@@ -362,6 +369,17 @@ async function main(): Promise<void> {
 
   const config = loadConfig();
   const root = getProjectRoot();
+
+  // 전략 프리셋 로드
+  const strategyName = getStrategy();
+  const preset = getStrategyPreset(strategyName);
+  strategyOverrides = preset.analysis;
+  logger.info(`전략 프리셋 적용: ${preset.label} (${preset.name})`, {
+    entry_threshold: preset.analysis.signal.entry_threshold,
+    rsi: `${preset.analysis.rsi.oversold}-${preset.analysis.rsi.overbought}`,
+    weights: JSON.stringify(preset.analysis.weights),
+  });
+
   const snapshotPath = resolve(root, "data/snapshots/latest.json");
 
   // 스냅샷 읽기
@@ -383,7 +401,7 @@ async function main(): Promise<void> {
   }
 
   const signals: TradeSignal[] = [];
-  const cooldownSeconds = config.analysis_agent.signal.cooldown_seconds;
+  const cooldownSeconds = strategyOverrides?.signal.cooldown_seconds ?? config.analysis_agent.signal.cooldown_seconds;
   const skippedCooldown: string[] = [];
 
   for (const snapshot of collection.snapshots) {

@@ -1,10 +1,10 @@
 general:
-  mode: paper
+  mode: live
+  strategy: balanced
   log_level: info
   timezone: Asia/Seoul
 data_agent:
   symbols:
-    # ── 거래량 상위 50 (바이낸스 선물 24h 거래량 기준, HyperLiquid 교차 검증) ──
     - symbol: BTC
       binance_pair: BTCUSDT
       hyperliquid_pair: BTC
@@ -56,69 +56,18 @@ data_agent:
     - symbol: BCH
       binance_pair: BCHUSDT
       hyperliquid_pair: BCH
-    - symbol: PENGU
-      binance_pair: PENGUUSDT
-      hyperliquid_pair: PENGU
-    - symbol: WIF
-      binance_pair: WIFUSDT
-      hyperliquid_pair: WIF
-    - symbol: PUMP
-      binance_pair: PUMPUSDT
-      hyperliquid_pair: PUMP
-    - symbol: UNI
-      binance_pair: UNIUSDT
-      hyperliquid_pair: UNI
-    - symbol: FIL
-      binance_pair: FILUSDT
-      hyperliquid_pair: FIL
-    - symbol: BERA
-      binance_pair: BERAUSDT
-      hyperliquid_pair: BERA
-    - symbol: kSHIB
-      binance_pair: 1000SHIBUSDT
-      hyperliquid_pair: kSHIB
     - symbol: LTC
       binance_pair: LTCUSDT
       hyperliquid_pair: LTC
-    - symbol: ENA
-      binance_pair: ENAUSDT
-      hyperliquid_pair: ENA
-    - symbol: kBONK
-      binance_pair: 1000BONKUSDT
-      hyperliquid_pair: kBONK
-    - symbol: OM
-      binance_pair: OMUSDT
-      hyperliquid_pair: OM
-    - symbol: AAVE
-      binance_pair: AAVEUSDT
-      hyperliquid_pair: AAVE
-    - symbol: FARTCOIN
-      binance_pair: FARTCOINUSDT
-      hyperliquid_pair: FARTCOIN
-    - symbol: DASH
-      binance_pair: DASHUSDT
-      hyperliquid_pair: DASH
-    - symbol: WLFI
-      binance_pair: WLFIUSDT
-      hyperliquid_pair: WLFI
-    - symbol: NEAR
-      binance_pair: NEARUSDT
-      hyperliquid_pair: NEAR
-    - symbol: PYTH
-      binance_pair: PYTHUSDT
-      hyperliquid_pair: PYTH
-    - symbol: AXS
-      binance_pair: AXSUSDT
-      hyperliquid_pair: AXS
-    - symbol: MOODENG
-      binance_pair: MOODENGUSDT
-      hyperliquid_pair: MOODENG
     - symbol: DOT
       binance_pair: DOTUSDT
       hyperliquid_pair: DOT
-    - symbol: ONDO
-      binance_pair: ONDOUSDT
-      hyperliquid_pair: ONDO
+    - symbol: UNI
+      binance_pair: UNIUSDT
+      hyperliquid_pair: UNI
+    - symbol: NEAR
+      binance_pair: NEARUSDT
+      hyperliquid_pair: NEAR
     - symbol: APT
       binance_pair: APTUSDT
       hyperliquid_pair: APT
@@ -131,30 +80,24 @@ data_agent:
     - symbol: TON
       binance_pair: TONUSDT
       hyperliquid_pair: TON
+    - symbol: AAVE
+      binance_pair: AAVEUSDT
+      hyperliquid_pair: AAVE
     - symbol: OP
       binance_pair: OPUSDT
       hyperliquid_pair: OP
-    - symbol: INJ
-      binance_pair: INJUSDT
-      hyperliquid_pair: INJ
     - symbol: ATOM
       binance_pair: ATOMUSDT
       hyperliquid_pair: ATOM
     - symbol: RENDER
       binance_pair: RENDERUSDT
       hyperliquid_pair: RENDER
-    - symbol: TIA
-      binance_pair: TIAUSDT
-      hyperliquid_pair: TIA
-    - symbol: SEI
-      binance_pair: SEIUSDT
-      hyperliquid_pair: SEI
-    - symbol: JUP
-      binance_pair: JUPUSDT
-      hyperliquid_pair: JUP
-    - symbol: STX
-      binance_pair: STXUSDT
-      hyperliquid_pair: STX
+    - symbol: INJ
+      binance_pair: INJUSDT
+      hyperliquid_pair: INJ
+    - symbol: FIL
+      binance_pair: FILUSDT
+      hyperliquid_pair: FIL
   polling_interval_ms: 1000
   candle_interval: 1m
   candle_lookback: 100
@@ -197,14 +140,14 @@ analysis_agent:
     bollinger: 0.15
     ma: 0.2
   signal:
-    entry_threshold: 0.5
-    min_confidence: 0.4
+    entry_threshold: 0.4
+    min_confidence: 0.35
     cooldown_seconds: 30
   risk:
     atr_period: 14
     stop_loss_multiplier: 2
-    take_profit_multiplier: 3
-    min_risk_reward_ratio: 1.5
+    take_profit_multiplier: 2.5
+    min_risk_reward_ratio: 1.25
 trade_agent:
   hyperliquid:
     base_url: https://api.hyperliquid.xyz
@@ -213,17 +156,17 @@ trade_agent:
     default: 5
     max: 10
   risk:
-    risk_per_trade: 0.02
-    max_position_pct: 0.1
-    max_daily_loss: 0.05
-    max_concurrent_positions: 5
-    max_daily_trades: 100
+    risk_per_trade: 0.03
+    max_position_pct: 0.15
+    max_daily_loss: 0.08
+    max_concurrent_positions: 6
+    max_daily_trades: 150
     min_balance_usdc: 100
-    min_signal_confidence: 0.4
+    min_signal_confidence: 0.35
   trailing_stop:
     enabled: true
-    activation_pct: 1.5
-    trail_pct: 0.8
+    activation_pct: 2.0
+    trail_pct: 1.0
   safety:
     kill_switch_file: data/KILL_SWITCH
     max_consecutive_api_errors: 5

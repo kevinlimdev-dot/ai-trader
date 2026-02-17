@@ -15,7 +15,8 @@ import { resolve } from "path";
 import { existsSync, readFileSync } from "fs";
 import { HyperliquidService } from "../../../src/services/hyperliquid.service";
 import { RiskManager } from "../../../src/utils/risk-manager";
-import { loadConfig, isPaperMode, getProjectRoot } from "../../../src/utils/config";
+import { loadConfig, isPaperMode, getProjectRoot, getStrategy } from "../../../src/utils/config";
+import { getStrategyPreset } from "../../../src/strategies/presets";
 import { createLogger } from "../../../src/utils/logger";
 import { atomicWrite } from "../../../src/utils/file";
 import {
@@ -46,13 +47,17 @@ function setupGracefulShutdown(): void {
 
 // ─── CLI 인자 파싱 ───
 
-function parseArgs(): { action: string; reason?: string } {
+function parseArgs(): { action: string; reason?: string; coin?: string; side?: string } {
   const args = process.argv.slice(2);
   const actionIdx = args.indexOf("--action");
   const reasonIdx = args.indexOf("--reason");
+  const coinIdx = args.indexOf("--coin");
+  const sideIdx = args.indexOf("--side");
   return {
     action: actionIdx >= 0 ? args[actionIdx + 1] : "execute",
     reason: reasonIdx >= 0 ? args[reasonIdx + 1] : undefined,
+    coin: coinIdx >= 0 ? args[coinIdx + 1] : undefined,
+    side: sideIdx >= 0 ? args[sideIdx + 1] : undefined,
   };
 }
 
@@ -130,6 +135,7 @@ async function getCurrentPrice(hl: HyperliquidService, symbol: string): Promise<
 async function executeSignals(hl: HyperliquidService, risk: RiskManager): Promise<void> {
   const root = getProjectRoot();
   const config = loadConfig();
+  const preset = getStrategyPreset(getStrategy());
   const signalPath = resolve(root, "data/signals/latest.json");
 
   if (!existsSync(signalPath)) {
@@ -140,8 +146,8 @@ async function executeSignals(hl: HyperliquidService, risk: RiskManager): Promis
   const raw = readFileSync(signalPath, "utf-8");
   const collection: SignalCollection = JSON.parse(raw);
 
-  // 신선도 체크
-  const maxAgeMs = (config.trade_agent.signal_max_age_seconds || 60) * 1000;
+  // 신선도 체크 (전략 프리셋 오버라이드)
+  const maxAgeMs = (preset.trade.signal_max_age_seconds || config.trade_agent.signal_max_age_seconds || 60) * 1000;
   const age = Date.now() - new Date(collection.generated_at).getTime();
   if (age > maxAgeMs) {
     console.log(JSON.stringify({
@@ -190,10 +196,70 @@ async function executeSignals(hl: HyperliquidService, risk: RiskManager): Promis
 
   const results: any[] = [];
 
+  // 현재 열린 포지션 조회 (중복 진입 방지용)
+  const openTrades = getOpenTrades();
+  const openBySymbol = new Map<string, { side: string; trade_id: string }>();
+  for (const t of openTrades) {
+    openBySymbol.set(t.symbol, { side: t.side, trade_id: t.trade_id });
+  }
+
   for (const signal of collection.signals) {
     if (signal.action === "HOLD") {
       results.push({ symbol: signal.symbol, action: "HOLD", reason: "진입 조건 미충족" });
       continue;
+    }
+
+    // 동일 코인 중복 포지션 검사
+    const existing = openBySymbol.get(signal.symbol);
+    if (existing) {
+      if (existing.side === signal.action) {
+        // 같은 방향 → 스킵 (중복 진입 방지)
+        results.push({ symbol: signal.symbol, action: signal.action, skipped: true, reason: `이미 ${existing.side} 포지션 보유 중` });
+        logger.info(`${signal.symbol} 중복 진입 스킵 (이미 ${existing.side})`, {});
+        continue;
+      } else {
+        // 반대 방향 → 기존 포지션 청산 후 반대로 진입
+        logger.info(`${signal.symbol} 방향 전환: ${existing.side} → ${signal.action}`, {});
+        try {
+          if (!isPaperMode()) {
+            const positions = await hl.getOpenPositions();
+            const target = positions.find((p) => p.position.coin === signal.symbol && parseFloat(p.position.szi) !== 0);
+            if (target) {
+              const closeSize = Math.abs(parseFloat(target.position.szi));
+              const closeBuy = parseFloat(target.position.szi) < 0; // SHORT이면 BUY로 청산
+              await safeApiCall(() => hl.placeMarketOrder({ coin: signal.symbol, isBuy: closeBuy, size: closeSize, reduceOnly: true }), risk);
+            }
+          }
+          // DB 기존 거래 종료
+          const currentPrice = await getCurrentPrice(hl, signal.symbol);
+          const direction = existing.side === "LONG" ? 1 : -1;
+          const matchedTrade = openTrades.find(t => t.trade_id === existing.trade_id);
+          if (matchedTrade) {
+            const closePnl = currentPrice > 0 ? (currentPrice - matchedTrade.entry_price) * direction * matchedTrade.size : 0;
+            const closePnlPct = currentPrice > 0 ? ((currentPrice - matchedTrade.entry_price) / matchedTrade.entry_price) * direction * 100 : 0;
+            const exitFeeRate = config.trade_agent.paper_fee_rate || 0.0005;
+            const exitFees = currentPrice * matchedTrade.size * exitFeeRate;
+            const totalFees = (matchedTrade.fees || 0) + exitFees;
+            updateTrade(existing.trade_id, {
+              status: "closed",
+              timestamp_close: new Date().toISOString(),
+              exit_price: currentPrice || undefined,
+              pnl: parseFloat((closePnl - totalFees).toFixed(4)),
+              pnl_pct: parseFloat(closePnlPct.toFixed(4)),
+              fees: parseFloat(totalFees.toFixed(4)),
+              exit_reason: "signal_reverse" as ExitReason,
+            });
+          }
+          openBySymbol.delete(signal.symbol);
+          results.push({ symbol: signal.symbol, action: `REVERSE ${existing.side}→${signal.action}`, status: "closed_existing" });
+          logger.info(`${signal.symbol} 기존 ${existing.side} 포지션 청산 완료`, {});
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          results.push({ symbol: signal.symbol, action: signal.action, error: `기존 포지션 청산 실패: ${msg}` });
+          logger.error(`${signal.symbol} 기존 포지션 청산 실패`, { error: msg });
+          continue; // 청산 실패 시 새 진입도 스킵
+        }
+      }
     }
 
     // 리스크 검증
@@ -276,6 +342,7 @@ async function executeSignals(hl: HyperliquidService, risk: RiskManager): Promis
         fees: parseFloat(fees.toFixed(4)),
       });
 
+      openBySymbol.set(signal.symbol, { side: signal.action, trade_id: `paper_${tradeId}` });
       logger.info(`[PAPER] ${signal.symbol} ${signal.action} 진입`, {
         size: size.toFixed(6),
         entry: signal.entry_price,
@@ -307,6 +374,7 @@ async function executeSignals(hl: HyperliquidService, risk: RiskManager): Promis
           status: "open",
         };
         insertTrade(trade);
+        openBySymbol.set(signal.symbol, { side: signal.action, trade_id: tradeId });
 
         results.push({
           symbol: signal.symbol,
@@ -525,6 +593,61 @@ async function showPositions(hl: HyperliquidService): Promise<void> {
   }
 }
 
+async function closePosition(hl: HyperliquidService, coin: string, side: string): Promise<void> {
+  logger.info("개별 포지션 청산", { coin, side });
+
+  if (!isPaperMode()) {
+    const positions = await hl.getOpenPositions();
+    const target = positions.find((p) => {
+      const posCoin = p.position.coin;
+      const posSide = parseFloat(p.position.szi) > 0 ? "LONG" : "SHORT";
+      return posCoin === coin && posSide === side.toUpperCase();
+    });
+
+    if (!target) {
+      console.log(JSON.stringify({ status: "error", error: `${coin} ${side} 포지션을 찾을 수 없습니다` }));
+      return;
+    }
+
+    const size = Math.abs(parseFloat(target.position.szi));
+    const isBuy = side.toUpperCase() === "SHORT";
+    await hl.placeMarketOrder({ coin, isBuy, size, reduceOnly: true });
+  }
+
+  const openTrades = getOpenTrades();
+  const matchedTrade = openTrades.find(
+    (t) => t.symbol === coin && t.side === side.toUpperCase()
+  );
+
+  if (matchedTrade) {
+    const currentPrice = await getCurrentPrice(hl, matchedTrade.symbol);
+    const direction = matchedTrade.side === "LONG" ? 1 : -1;
+    const pnl = currentPrice > 0
+      ? (currentPrice - matchedTrade.entry_price) * direction * matchedTrade.size
+      : 0;
+    const pnlPct = currentPrice > 0
+      ? ((currentPrice - matchedTrade.entry_price) / matchedTrade.entry_price) * direction * 100
+      : 0;
+
+    updateTrade(matchedTrade.trade_id, {
+      status: "closed",
+      timestamp_close: new Date().toISOString(),
+      exit_price: currentPrice || undefined,
+      pnl: pnl ? parseFloat(pnl.toFixed(4)) : undefined,
+      pnl_pct: pnlPct ? parseFloat(pnlPct.toFixed(4)) : undefined,
+      exit_reason: "manual_close" as ExitReason,
+    });
+  }
+
+  console.log(JSON.stringify({
+    status: "success",
+    mode: isPaperMode() ? "paper" : "live",
+    coin,
+    side,
+    closed: matchedTrade ? 1 : 0,
+  }, null, 2));
+}
+
 async function closeAll(hl: HyperliquidService, reason: string = "manual"): Promise<void> {
   const openTrades = getOpenTrades();
 
@@ -603,10 +726,20 @@ async function dailySummaryAction(): Promise<void> {
 async function main(): Promise<void> {
   setupGracefulShutdown();
 
-  const { action, reason } = parseArgs();
+  const { action, reason, coin: argCoin, side: argSide } = parseArgs();
   const config = loadConfig();
+
+  // 전략 프리셋 로드 및 RiskManager에 적용
+  const strategyName = getStrategy();
+  const preset = getStrategyPreset(strategyName);
   const hl = new HyperliquidService();
-  const risk = new RiskManager();
+  const risk = new RiskManager(preset.trade);
+
+  logger.info(`전략 프리셋 적용: ${preset.label}`, {
+    leverage: preset.trade.leverage.default,
+    risk_per_trade: preset.trade.risk.risk_per_trade,
+    max_positions: preset.trade.risk.max_concurrent_positions,
+  });
 
   // Kill switch 확인 (emergency 제외)
   if (action !== "emergency" && action !== "positions" && action !== "daily-summary") {
@@ -639,6 +772,13 @@ async function main(): Promise<void> {
       break;
     case "positions":
       await showPositions(hl);
+      break;
+    case "close-position":
+      if (!argCoin || !argSide) {
+        console.error(JSON.stringify({ status: "error", error: "--coin과 --side가 필요합니다" }));
+        process.exit(1);
+      }
+      await closePosition(hl, argCoin, argSide);
       break;
     case "close-all":
       await closeAll(hl, reason || "manual");

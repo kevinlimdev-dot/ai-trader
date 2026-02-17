@@ -1,7 +1,8 @@
-import { readFileSync, existsSync } from "fs";
-import { parse } from "yaml";
+import { readFileSync, existsSync, writeFileSync } from "fs";
+import { parse, stringify } from "yaml";
 import { resolve } from "path";
 import { setGlobalLogLevel } from "./logger";
+import type { StrategyName } from "../strategies/presets";
 
 export interface SymbolConfig {
   symbol: string;
@@ -12,6 +13,7 @@ export interface SymbolConfig {
 export interface AppConfig {
   general: {
     mode: "paper" | "live";
+    strategy: StrategyName;
     log_level: "debug" | "info" | "warn" | "error";
     timezone: string;
   };
@@ -169,4 +171,23 @@ export function getDbPath(): string {
 
 export function getDataDir(): string {
   return resolve(getProjectRoot(), "data");
+}
+
+export function getStrategy(): StrategyName {
+  return loadConfig().general.strategy || "balanced";
+}
+
+export function setStrategy(strategy: StrategyName): void {
+  const root = getProjectRoot();
+  const filePath = resolve(root, "config.yaml");
+  const raw = readFileSync(filePath, "utf-8");
+  const config = parse(raw);
+  config.general.strategy = strategy;
+  writeFileSync(filePath, stringify(config), "utf-8");
+  cachedConfig = null;
+}
+
+export function reloadConfig(): AppConfig {
+  cachedConfig = null;
+  return loadConfig();
 }

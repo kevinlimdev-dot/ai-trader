@@ -221,6 +221,123 @@ export class BinanceService {
       candles,
     };
   }
+
+  // ─── 추가 시장 데이터 (AI 자율 판단용) ───
+
+  async getOpenInterest(symbol: string): Promise<{ openInterest: number; time: number } | null> {
+    try {
+      const data = await this.request<{ symbol: string; openInterest: string; time: number }>(
+        "/fapi/v1/openInterest",
+        { symbol },
+      );
+      return { openInterest: parseFloat(data.openInterest), time: data.time };
+    } catch { return null; }
+  }
+
+  async getFundingRateHistory(symbol: string, limit: number = 8): Promise<Array<{
+    fundingRate: number; fundingTime: number; markPrice: number;
+  }>> {
+    try {
+      const data = await this.request<Array<{
+        symbol: string; fundingRate: string; fundingTime: number; markPrice: string;
+      }>>("/fapi/v1/fundingRate", { symbol, limit });
+      return data.map(d => ({
+        fundingRate: parseFloat(d.fundingRate),
+        fundingTime: d.fundingTime,
+        markPrice: parseFloat(d.markPrice),
+      }));
+    } catch { return []; }
+  }
+
+  async getLongShortRatio(symbol: string, period: string = "1h", limit: number = 5): Promise<Array<{
+    longShortRatio: number; longAccount: number; shortAccount: number; timestamp: number;
+  }>> {
+    try {
+      const data = await this.request<Array<{
+        symbol: string; longShortRatio: string; longAccount: string; shortAccount: string; timestamp: number;
+      }>>("/futures/data/globalLongShortAccountRatio", { symbol, period, limit });
+      return data.map(d => ({
+        longShortRatio: parseFloat(d.longShortRatio),
+        longAccount: parseFloat(d.longAccount),
+        shortAccount: parseFloat(d.shortAccount),
+        timestamp: d.timestamp,
+      }));
+    } catch { return []; }
+  }
+
+  async getTopTraderLongShortRatio(symbol: string, period: string = "1h", limit: number = 5): Promise<Array<{
+    longShortRatio: number; longAccount: number; shortAccount: number; timestamp: number;
+  }>> {
+    try {
+      const data = await this.request<Array<{
+        symbol: string; longShortRatio: string; longAccount: string; shortAccount: string; timestamp: number;
+      }>>("/futures/data/topLongShortPositionRatio", { symbol, period, limit });
+      return data.map(d => ({
+        longShortRatio: parseFloat(d.longShortRatio),
+        longAccount: parseFloat(d.longAccount),
+        shortAccount: parseFloat(d.shortAccount),
+        timestamp: d.timestamp,
+      }));
+    } catch { return []; }
+  }
+
+  async getTakerBuySellVolume(symbol: string, period: string = "1h", limit: number = 5): Promise<Array<{
+    buySellRatio: number; buyVol: number; sellVol: number; timestamp: number;
+  }>> {
+    try {
+      const data = await this.request<Array<{
+        buySellRatio: string; sellVol: string; buyVol: string; timestamp: number;
+      }>>("/futures/data/takerBuySellVol", { pair: symbol, contractType: "PERPETUAL", period, limit });
+      return data.map(d => ({
+        buySellRatio: parseFloat(d.buySellRatio),
+        buyVol: parseFloat(d.buyVol),
+        sellVol: parseFloat(d.sellVol),
+        timestamp: d.timestamp,
+      }));
+    } catch { return []; }
+  }
+
+  async getMarketSentiment(symbol: string): Promise<{
+    openInterest: number | null;
+    fundingHistory: Array<{ rate: number; time: number }>;
+    longShortRatio: { latest: number; trend: string } | null;
+    topTraderRatio: { latest: number; trend: string } | null;
+    takerVolume: { buySellRatio: number; trend: string } | null;
+  }> {
+    const [oi, fundingHist, lsRatio, topRatio, takerVol] = await Promise.all([
+      this.getOpenInterest(symbol),
+      this.getFundingRateHistory(symbol, 8),
+      this.getLongShortRatio(symbol, "1h", 5),
+      this.getTopTraderLongShortRatio(symbol, "1h", 5),
+      this.getTakerBuySellVolume(symbol, "1h", 5),
+    ]);
+
+    const calcTrend = (arr: Array<{ longShortRatio?: number; buySellRatio?: number }>, key: 'longShortRatio' | 'buySellRatio'): string => {
+      if (arr.length < 2) return "unknown";
+      const first = (arr[0] as any)[key];
+      const last = (arr[arr.length - 1] as any)[key];
+      if (last > first * 1.05) return "increasing";
+      if (last < first * 0.95) return "decreasing";
+      return "stable";
+    };
+
+    return {
+      openInterest: oi?.openInterest ?? null,
+      fundingHistory: fundingHist.map(f => ({ rate: f.fundingRate, time: f.fundingTime })),
+      longShortRatio: lsRatio.length > 0 ? {
+        latest: lsRatio[lsRatio.length - 1].longShortRatio,
+        trend: calcTrend(lsRatio, 'longShortRatio'),
+      } : null,
+      topTraderRatio: topRatio.length > 0 ? {
+        latest: topRatio[topRatio.length - 1].longShortRatio,
+        trend: calcTrend(topRatio, 'longShortRatio'),
+      } : null,
+      takerVolume: takerVol.length > 0 ? {
+        buySellRatio: takerVol[takerVol.length - 1].buySellRatio,
+        trend: calcTrend(takerVol, 'buySellRatio'),
+      } : null,
+    };
+  }
 }
 
 // ─── 재시도 가능 여부를 구분하는 에러 ───

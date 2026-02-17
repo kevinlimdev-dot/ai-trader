@@ -1,11 +1,17 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { resolve } from 'path';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, openSync, constants as fsConstants } from 'fs';
 
 const PROJECT_ROOT = resolve(process.cwd(), '..');
 const STATUS_FILE = '/tmp/ai-trader-runner-status.json';
 const CONTROL_FILE = '/tmp/ai-trader-runner-control.json';
+
+function openLogFile() {
+	const logPath = resolve(PROJECT_ROOT, 'data', 'runner.log');
+	const fd = openSync(logPath, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_APPEND);
+	return fd;
+}
 
 interface RunnerStatus {
 	state: 'running' | 'idle' | 'stopped' | 'error';
@@ -87,15 +93,15 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		}
 
-		// Runner 프로세스를 백그라운드로 시작
+		// Runner 프로세스를 백그라운드로 시작 (로그 append 모드)
 		const runnerPath = resolve(PROJECT_ROOT, 'src', 'runner.ts');
-		const logPath = resolve(PROJECT_ROOT, 'data', 'runner.log');
+		const logFd = openLogFile();
 
 		try {
 			const proc = Bun.spawn(['bun', 'run', runnerPath], {
 				cwd: PROJECT_ROOT,
-				stdout: Bun.file(logPath),
-				stderr: Bun.file(logPath),
+				stdout: logFd,
+				stderr: logFd,
 				env: { ...process.env },
 				stdin: 'ignore',
 			});
@@ -141,6 +147,38 @@ export const POST: RequestHandler = async ({ request }) => {
 		} catch {}
 
 		return json({ success: true, message: 'Stop signal sent' });
+	}
+
+	if (action === 'once') {
+		// 이미 실행 중인지 확인
+		const current = readStatus();
+		if (current && (current.state === 'running' || current.state === 'idle')) {
+			try {
+				process.kill(current.pid, 0);
+				return json({ success: false, error: 'Runner already running', status: current });
+			} catch {
+				// 프로세스 죽어있으면 새로 시작
+			}
+		}
+
+		const runnerPath = resolve(PROJECT_ROOT, 'src', 'runner.ts');
+		const logFd = openLogFile();
+
+		try {
+			const proc = Bun.spawn(['bun', 'run', runnerPath, '--once'], {
+				cwd: PROJECT_ROOT,
+				stdout: logFd,
+				stderr: logFd,
+				env: { ...process.env },
+				stdin: 'ignore',
+			});
+
+			await new Promise(r => setTimeout(r, 1500));
+			const status = readStatus();
+			return json({ success: true, pid: proc.pid, status });
+		} catch (err) {
+			return json({ success: false, error: err instanceof Error ? err.message : String(err) });
+		}
 	}
 
 	if (action === 'run-now') {

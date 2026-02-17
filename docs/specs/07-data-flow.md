@@ -15,74 +15,118 @@ OpenClaw에서 에이전트 오케스트레이션은 두 가지 방식으로 이
 Gateway 내장 cron이 주기적으로 **isolated session**을 생성하고, 에이전트가 스킬을 순차적으로 호출한다.
 
 ```
-[Cron Job: Trading Loop - 매 30초]
+[Cron Job: Trading Loop - 5분 간격]
      │
      ▼
   Isolated Session 생성
      │
      ▼
-  에이전트가 AGENTS.md 규칙에 따라:
+  에이전트가 ai-trader 스킬에 따라 7단계 실행:
      │
      ├── 1. exec "bun run skills/data-collector/scripts/collect-prices.ts"
      │     └── 출력: data/snapshots/latest.json
      │
      ├── 2. exec "bun run skills/analyzer/scripts/analyze.ts"
      │     └── 입력: data/snapshots/latest.json
-     │     └── 출력: data/signals/latest.json
+     │     └── 출력: data/signals/latest.json (전략 프리셋 적용)
      │
-     ├── 3. exec "bun run skills/wallet-manager/scripts/manage-wallet.ts --action auto-rebalance"
+     ├── 3. exec "bun run skills/ai-decision/scripts/collect-sentiment.ts"
+     │     └── 바이낸스: OI, 롱/숏 비율, 탑 트레이더, 테이커, 펀딩비
+     │     └── 하이퍼리퀴드: 펀딩비, OI, 프리미엄, 거래량
+     │     └── 출력: data/sentiment/latest.json (실패해도 계속)
+     │
+     ├── 4. ★ AI 자율 투자 판단 ★
+     │   exec "bun run skills/ai-decision/scripts/summarize.ts"
+     │     └── 기술적 분석 + 시장 심리 + 포지션 + 잔고 종합 요약
+     │   에이전트가 데이터 분석 후 독립적으로 투자 결정
+     │   exec "bun run skills/ai-decision/scripts/apply-decision.ts --decisions '<JSON>'"
+     │     └── 승인/거부 결과를 data/signals/latest.json에 반영
+     │
+     ├── 5. exec "bun run skills/wallet-manager/scripts/manage-wallet.ts --action auto-rebalance"
      │     └── Coinbase ↔ HyperLiquid 잔고 리밸런싱 (실패해도 계속)
      │
-     ├── 4. (시그널이 LONG/SHORT인 경우)
-     │   exec "bun run skills/trader/scripts/execute-trade.ts"
-     │     └── 입력: data/signals/latest.json
+     ├── 6. exec "bun run skills/trader/scripts/execute-trade.ts"
+     │     └── 입력: data/signals/latest.json (AI 필터링 완료)
      │     └── 출력: SQLite 저장 + stdout 결과
      │
-     ├── 5. exec "bun run skills/trader/scripts/execute-trade.ts --action monitor"
-     │     └── 포지션 SL/TP/트레일링 스탑 체크
+     └── 7. 결과를 Telegram으로 보고 (AI 판단 근거 포함)
+
+[독립 프로세스 — Position Monitor]
      │
-     └── 결과를 Telegram으로 announce
+     ├── Runner가 거래 실행 후 자동 시작 (ensureMonitorRunning)
+     ├── 15초 주기로 열린 포지션 체크
+     ├── SL/TP/트레일링 스탑 조건 충족 시 즉시 청산
+     └── 포지션 없으면 20 idle 사이클(~5분) 후 자동 종료
 ```
 
 ### 2.2 대시보드 기반 (Run All)
 
-웹 대시보드의 **Run All** 버튼으로 동일한 5단계 파이프라인을 수동 실행한다. `Bun.spawn`으로 각 스크립트를 순차 실행하며, 진행 상황이 실시간으로 UI에 반영된다.
+웹 대시보드의 **자동매매 시작** 버튼 또는 **1회 실행** 버튼으로 7단계 파이프라인을 실행한다. OpenClaw 에이전트 모드 또는 직접 `Bun.spawn` 모드로 실행한다.
 
 ```
-[대시보드 Run All 클릭]
+[대시보드 — 실행 모드 2가지]
+
+A. OpenClaw 에이전트 모드 (OpenClaw 데몬 연결 시):
      │
      ▼
-  SvelteKit API → bot.ts runPipeline()
-     │
-     ├── step 1: Bun.spawn("bun run collect")    → 성공/실패 반환
-     ├── step 2: Bun.spawn("bun run analyze")    → 성공/실패 반환
-     ├── step 3: Bun.spawn("bun run auto-rebalance") → 실패해도 계속
-     ├── step 4: Bun.spawn("bun run trade")      → 성공/실패 반환
-     └── step 5: Bun.spawn("bun run monitor")    → 성공/실패 반환
+  SvelteKit API → /api/bot/runner (start/once)
      │
      ▼
-  대시보드에 각 단계 결과 표시 (✅/❌ + 소요 시간)
+  src/runner.ts → openclaw agent --agent main --message <7단계 파이프라인 프롬프트>
+     │
+     ├── OpenClaw AI가 7단계 순차 실행 (4단계에서 자율 판단)
+     └── 실시간 출력 → /tmp/ai-trader-openclaw-output.txt
+     │
+     ▼
+  거래 완료 후 → ensureMonitorRunning() → position-monitor.ts 자동 시작
+
+B. 직접 실행 모드 (OpenClaw 미연결 시 fallback 또는 --direct):
+     │
+     ▼
+  src/runner.ts → Bun.spawn 순차 실행
+     │
+     ├── step 1: collect-prices.ts        → 성공/실패 (critical)
+     ├── step 2: analyze.ts               → 성공/실패 (critical)
+     ├── step 3: collect-sentiment.ts     → 실패해도 계속
+     ├── step 4: summarize.ts             → 실패해도 계속
+     ├── step 5: manage-wallet.ts         → 실패해도 계속
+     └── step 6: execute-trade.ts         → 성공/실패
+     │
+     ▼
+  거래 완료 후 → ensureMonitorRunning() → position-monitor.ts 자동 시작
 ```
 
-### 2.3 대화 기반 (사용자 명령)
+> **Note:** 직접 실행 모드에서는 AI 자율 판단(4단계)의 `summarize.ts`만 실행되고, OpenClaw AI의 독립적 판단과 `apply-decision.ts` 호출은 생략된다. OpenClaw 에이전트 모드에서만 완전한 AI 판단이 이루어진다.
 
-Telegram/Discord에서 사용자가 직접 명령하면, 에이전트가 적절한 스킬을 호출한다.
+### 2.3 대화 기반 (텔레그램)
+
+텔레그램 봇(`@aiiiiitrading_bot`)에서 사용자가 자연어로 명령하면, 에이전트가 `ai-trader` 스킬의 명령어 매핑에 따라 적절한 스크립트를 호출한다.
 
 ```
-사용자: "현재 BTC 포지션 보여줘"
+사용자 (Telegram): "잔고"
      │
      ▼
   OpenClaw Gateway → 에이전트 세션
      │
      ▼
-  에이전트: trader 스킬 SKILL.md 참조
+  에이전트: ai-trader 스킬 SKILL.md의 명령어 매핑 참조
      │
      ▼
-  exec "bun run skills/trader/scripts/execute-trade.ts --action positions"
+  exec "bun run skills/wallet-manager/scripts/manage-wallet.ts --action balance"
      │
      ▼
-  결과를 사용자에게 응답
+  결과를 텔레그램으로 응답 (streamMode: block)
 ```
+
+지원되는 텔레그램 명령 예시:
+
+| 명령 | 실행 스크립트 |
+|------|-------------|
+| "자동매매 시작" | Runner start → 7단계 반복 |
+| "포지션" | execute-trade.ts --action positions |
+| "잔고" | manage-wallet.ts --action balance |
+| "긴급 청산" | execute-trade.ts --action emergency |
+| "일일요약" | execute-trade.ts --action daily-summary |
 
 ### 2.4 Sub-Agent (병렬 처리)
 
@@ -110,7 +154,9 @@ data/
 ├── snapshots/
 │   └── latest.json     # data-collector → analyzer
 ├── signals/
-│   └── latest.json     # analyzer → trader
+│   └── latest.json     # analyzer → ai-decision → trader
+├── sentiment/
+│   └── latest.json     # collect-sentiment → summarize (시장 심리)
 └── fund-requests/
     └── latest.json     # trader → wallet-manager (자금 요청 시)
 ```
@@ -137,7 +183,24 @@ data/ai-trader.db
 └── balance_snapshots # 잔고 스냅샷
 ```
 
-### 3.3 stdout (스크립트 → 에이전트)
+### 3.3 프로세스 간 통신 (IPC — 파일 기반)
+
+Runner와 Position Monitor는 `/tmp` 디렉토리의 JSON 파일로 상태를 공유한다:
+
+```
+/tmp/
+├── ai-trader-runner-status.json      # Runner 실행 상태 (state, cycle, nextRun 등)
+├── ai-trader-runner-control.json     # Runner 제어 (stop/start 명령)
+├── ai-trader-monitor-status.json     # Position Monitor 상태 (positions, checks 등)
+├── ai-trader-monitor-control.json    # Position Monitor 제어 (stop 명령)
+├── ai-trader-openclaw-output.txt     # OpenClaw 에이전트 실시간 출력
+├── ai-trader-openclaw-status.json    # OpenClaw 실행 상태
+└── ai-trader-awal-cache.json         # awal CLI 캐시 (잔고, 주소)
+```
+
+대시보드 SvelteKit API가 이 파일들을 읽어 UI에 실시간 반영한다.
+
+### 3.4 stdout (스크립트 → 에이전트)
 
 각 스크립트는 실행 결과를 stdout에 JSON으로 출력한다. OpenClaw 에이전트는 `exec` 도구의 반환값으로 이를 읽어 다음 판단에 활용한다.
 
@@ -153,23 +216,31 @@ console.log(JSON.stringify({
 
 ## 4. 시퀀스 다이어그램
 
-### 4.1 일반 트레이딩 루프
+### 4.1 일반 트레이딩 루프 (7단계)
 
 ```
-Cron → Gateway:  "트레이딩 루프 실행"
-Gateway → Agent:  Isolated session 생성
-Agent → exec:     bun run collect-prices.ts
-exec → File:      data/snapshots/latest.json 저장
-Agent → exec:     bun run analyze.ts
-exec → File:      data/signals/latest.json 저장
-Agent:            시그널 확인 (LONG/SHORT?)
-  [LONG or SHORT인 경우]
-  Agent → exec:   bun run execute-trade.ts
-  exec → HL API:  주문 실행
-  exec → SQLite:  거래 기록 저장
-  Agent → Telegram: "BTC LONG 진입 @ 65,420"
-  [HOLD인 경우]
-  Agent:          "진입 조건 미충족, 대기"
+Runner (5분 주기) 또는 OpenClaw Agent:
+  step 1 → exec:  bun run collect-prices.ts
+  exec → File:    data/snapshots/latest.json 저장
+  step 2 → exec:  bun run analyze.ts (전략 프리셋 적용)
+  exec → File:    data/signals/latest.json 저장
+  step 3 → exec:  bun run collect-sentiment.ts
+  exec → File:    data/sentiment/latest.json 저장 (실패해도 계속)
+  step 4:         ★ AI 자율 투자 판단 (OpenClaw 모드) ★
+    → exec:       bun run summarize.ts
+    AI 분석:      기술적 지표 + 시장 심리 종합 판단
+    → exec:       bun run apply-decision.ts --decisions '<JSON>'
+    exec → File:  data/signals/latest.json 수정 (AI 필터링)
+  step 5 → exec:  bun run manage-wallet.ts --action auto-rebalance
+  exec:           잔고 체크 + 리밸런싱 (실패해도 계속)
+  step 6:         거래 실행
+    → exec:       bun run execute-trade.ts (AI 승인 시그널만 실행)
+    exec → HL API: 주문 실행
+    exec → SQLite: 거래 기록 저장
+  step 7:         결과 보고 (AI 판단 근거 포함)
+
+  Runner → ensureMonitorRunning()
+  → position-monitor.ts 백그라운드 시작 (15초 주기 SL/TP 체크)
 ```
 
 ### 4.2 자동 리밸런싱
@@ -194,7 +265,67 @@ exec → Agent:     { status: "funded", amount: 500 }
 Agent → exec:     bun run execute-trade.ts  (재시도)
 ```
 
-### 4.4 긴급 상황
+### 4.4 Arbitrum → HyperLiquid 입금
+
+```
+대시보드 또는 CLI → deposit-to-hl.ts
+exec:            Arbitrum ETH 잔고 확인 (가스비용)
+exec:            Arbitrum USDC 잔고 확인
+exec:            ERC20 transfer → HL Bridge2 (0x2Df1...dF7)
+exec → Arbitrum: 트랜잭션 전송 + 컨펌 대기
+exec:            { status: "deposited", amount: "1000.00", txHash: "0x..." }
+                 → ~1분 내 HyperLiquid Spot 계정 입금 완료
+                 → Unified Account: Spot USDC가 Perps 마진으로 자동 활용
+```
+
+### 4.5 AI 자율 투자 판단
+
+```
+[4단계: AI 자율 판단 — OpenClaw 에이전트 모드]
+
+1. summarize.ts 실행 → 종합 요약 JSON 생성:
+   ├── 기술적 분석 (data/signals/latest.json)
+   ├── 시장 심리 (data/sentiment/latest.json)
+   ├── 현재 포지션 (HyperLiquid API)
+   └── 잔고 정보
+
+2. OpenClaw AI가 요약을 분석:
+   ├── composite_score + 개별 지표 일치 여부
+   ├── crowd_bias: 군중 편향 → 역발상 검토
+   ├── smart_money: 탑 트레이더 방향 추종
+   ├── funding_rate: 극단적이면 반대 포지션 유리
+   ├── open_interest: 스퀴즈 가능성 판단
+   └── taker_pressure: 단기 모멘텀 파악
+
+3. AI가 decisions JSON 생성:
+   [{"symbol":"BTC","action":"LONG","confidence":0.7,
+     "reason":"RSI 반등 + 스마트머니 롱 + 군중 숏(역발상) + 펀딩비 음수"},
+    {"symbol":"ETH","action":"HOLD",
+     "reason":"군중+스마트머니 모두 롱 → 과열 위험"}]
+
+4. apply-decision.ts 실행:
+   ├── AI 승인 종목: action 유지 + ai_reviewed: true
+   ├── AI 거부 종목: action → "HOLD" + ai_reason 기록
+   └── data/signals/latest.json 수정 완료
+```
+
+### 4.6 포지션 모니터링 (독립 프로세스)
+
+```
+[position-monitor.ts 시작]
+Loop:
+  exec → HL API:  열린 포지션 조회
+  exec → HL API:  현재 가격 조회
+  exec:           SL/TP/트레일링 스탑 조건 체크
+    [SL 도달]    → HL API: 시장가 청산 → SQLite 기록
+    [TP 도달]    → HL API: 시장가 청산 → SQLite 기록
+    [Trailing]   → peakPnl 업데이트, drawdown 체크
+  exec:           /tmp/ai-trader-monitor-status.json 업데이트
+  sleep 15초
+  [포지션 없으면 idleCycles++ → 20회(~5분) 후 자동 종료]
+```
+
+### 4.7 긴급 상황
 
 ```
 [1분 내 BTC -5% 급락 감지]
@@ -247,8 +378,8 @@ OpenClaw Gateway 자체의 안정성:
 
 | 작업 | 주기 | 방식 |
 |------|------|------|
-| 트레이딩 루프 | 30초 | cron (isolated) |
-| 포지션 모니터링 | 10초 | cron (isolated) |
+| 트레이딩 파이프라인 | 5분 (300초) | Runner (src/runner.ts) |
+| 포지션 모니터링 | 15초 | 독립 프로세스 (src/position-monitor.ts) |
 | 잔고 체크 | 5분 | cron (isolated) |
 | 일일 리포트 | 매일 22:00 KST | cron (isolated + announce) |
 | 긴급 알림 | 즉시 | 에이전트 판단 |
@@ -359,3 +490,5 @@ ETH: HOLD (진입 조건 미충족)
 - [01-overview.md](./01-overview.md) — 시스템 아키텍처
 - [06-config-and-deployment.md](./06-config-and-deployment.md) — 설정 전체
 - [08-dashboard.md](./08-dashboard.md) — 웹 대시보드 상세 스펙
+- [10-ai-decision.md](./10-ai-decision.md) — AI 자율 투자 판단 시스템
+- [11-telegram.md](./11-telegram.md) — 텔레그램 연동

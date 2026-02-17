@@ -166,23 +166,46 @@ Agentic Wallet (Base) ──send──┘  ← 자동 리밸런싱 경로 (Base�
 
 ## 3.5 입금 방법
 
-### 기본 입금: HyperLiquid 직접 입금 (Arbitrum USDC)
+### 기본 입금: Arbitrum USDC → HyperLiquid (자동 입금 지원)
 
-사용자는 **HyperLiquid 입금 주소**(`HYPERLIQUID_DEPOSIT_ADDRESS`)에 **Arbitrum 네트워크 USDC**를 입금한다. 이것이 거래에 사용되는 직접적인 자금이다.
+사용자가 **Arbitrum 네트워크**에 USDC를 보유하고 있으면, **자동 입금 스크립트**(`deposit-to-hl.ts`)를 통해 HyperLiquid Bridge2 컨트랙트에 전송하여 입금한다.
 
 ```
-┌──────────────┐    Arbitrum USDC     ┌──────────────────┐
-│   사용자       │ ─── 직접 입금 ──→  │  HyperLiquid     │
-│              │                      │  거래 계좌        │
-└──────────────┘                      │  (Arbitrum)       │
-                                      └──────────────────┘
+┌──────────────┐   Arbitrum USDC    ┌──────────────────┐    ~1분    ┌──────────────────┐
+│   사용자 지갑  │ ─── deposit ──→  │  HL Bridge2       │ ────────→ │  HyperLiquid     │
+│  (Arbitrum)   │                   │  (0x2Df1...dF7)   │           │  Spot 계좌        │
+└──────────────┘                    └──────────────────┘           │  (Unified Account) │
+                                                                    └──────────────────┘
 ```
 
-- **네트워크**: Arbitrum
-- **토큰**: USDC
-- **입금 주소**: `.env`의 `HYPERLIQUID_DEPOSIT_ADDRESS`
-- **가스비**: Arbitrum ETH 소량 필요 (입금 트랜잭션용)
-- HyperLiquid 웹 UI에서 지갑 연결 후 입금하면 가장 간편
+- **네트워크**: Arbitrum One
+- **토큰**: USDC (native, `0xaf88d065e77c8cC2239327C5EDb3A432268e5831`)
+- **Bridge 주소**: `0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7` (HL Deposit Bridge 2)
+- **최소 입금**: 5 USDC
+- **처리 시간**: ~1분
+- **가스비**: Arbitrum ETH 소량 필요 (~0.001 ETH)
+- **방법**: ERC20 `transfer`로 Bridge2 컨트랙트에 전송
+
+#### CLI 사용법
+
+```bash
+# 전액 입금
+bun run deposit
+
+# 금액 지정
+bun run deposit -- --amount 500
+
+# 시뮬레이션 (실제 전송 없음)
+bun run deposit -- --dry-run
+```
+
+#### Unified Account
+
+HyperLiquid **Unified Account** 활성 시:
+- 입금된 USDC는 **Spot 계정**에 들어감
+- Spot USDC가 자동으로 Perps 마진으로 활용됨 → **별도 전송 불필요**
+- `clearinghouseState.accountValue`에 Spot USDC가 이미 포함됨
+- 잔고 조회 시 이중 계산 방지: `perpBalance > 0`이면 perpBalance가 총잔고
 
 ### 보조 입금: Coinbase Agentic Wallet 경유 (선택)
 
@@ -307,10 +330,21 @@ bunx awal auth verify <flowId> <code>
 skills/wallet-manager/
 ├── SKILL.md
 └── scripts/
-    └── manage-wallet.ts
+    ├── manage-wallet.ts      # 잔고/리밸런싱/전송 등 종합 관리
+    ├── deposit-to-hl.ts      # Arbitrum → HyperLiquid Bridge2 자동 입금
+    └── spot-to-perp.ts       # Spot ↔ Perp 내부 전송 (비통합 계정용)
 
 src/services/
-└── coinbase.service.ts    # awal CLI 래퍼
+├── hyperliquid.service.ts    # HL API (getBalance, getSpotBalance, spotToPerp 등)
+└── coinbase.service.ts       # awal CLI 래퍼
+```
+
+### package.json 스크립트
+
+```bash
+bun run wallet            # 종합 지갑 관리
+bun run deposit           # Arbitrum → HL 자동 입금
+bun run spot-to-perp      # Spot → Perp 전송 (Unified Account 시 불필요)
 ```
 
 ---

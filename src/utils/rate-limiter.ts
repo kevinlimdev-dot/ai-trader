@@ -129,6 +129,11 @@ export const BINANCE_WEIGHTS: Record<string, number> = {
   "/fapi/v1/depth": 5,
   "/fapi/v1/ticker/24hr": 1,
   "/fapi/v1/klines": 5,
+  "/fapi/v1/openInterest": 1,
+  "/fapi/v1/fundingRate": 1,
+  "/futures/data/globalLongShortAccountRatio": 1,
+  "/futures/data/topLongShortPositionRatio": 1,
+  "/futures/data/takerBuySellVol": 1,
 };
 
 export const HYPERLIQUID_WEIGHTS: Record<string, number> = {

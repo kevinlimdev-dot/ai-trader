@@ -157,13 +157,14 @@ export interface PriceSnapshot {
 
 ```yaml
 data_agent:
-  symbols:
+  symbols:     # 거래량 상위 50개 코인 (config.yaml에서 관리)
     - symbol: "BTC"
       binance_pair: "BTCUSDT"
       hyperliquid_pair: "BTC"
     - symbol: "ETH"
       binance_pair: "ETHUSDT"
       hyperliquid_pair: "ETH"
+    # ... (SOL, XRP, DOGE, ADA 등 50종 — config.yaml 참조)
 
   polling_interval_ms: 1000
   candle_interval: "1m"
@@ -232,6 +233,11 @@ const BINANCE_WEIGHTS = {
   "/fapi/v1/depth": 5,
   "/fapi/v1/ticker/24hr": 1,
   "/fapi/v1/klines": 5,
+  "/fapi/v1/openInterest": 1,             // 시장 심리 (NEW)
+  "/fapi/v1/fundingRate": 1,              // 시장 심리 (NEW)
+  "/futures/data/globalLongShortAccountRatio": 1,  // 시장 심리 (NEW)
+  "/futures/data/topLongShortPositionRatio": 1,    // 시장 심리 (NEW)
+  "/futures/data/takerBuySellVol": 1,              // 시장 심리 (NEW)
 };
 
 // 하이퍼리퀴드
@@ -263,17 +269,98 @@ const data = await fetch(url);
 
 ---
 
-## 8. 실시간 가격 데이터 (대시보드 연동)
+## 8. 시장 심리 데이터 수집 (AI 자율 판단용)
+
+AI 자율 투자 판단을 위해 바이낸스와 하이퍼리퀴드에서 추가적인 시장 심리(Market Sentiment) 데이터를 수집한다. `skills/ai-decision/scripts/collect-sentiment.ts`에서 수집하며, 결과는 `data/sentiment/latest.json`에 저장된다.
+
+### 8.1 바이낸스 시장 심리 API
+
+`BinanceService`에 다음 메서드가 추가되었다:
+
+```typescript
+// 오픈 인터레스트
+await binance.getOpenInterest("BTCUSDT");
+// { openInterest: 85000.5, time: 1708000000 }
+
+// 펀딩비 히스토리
+await binance.getFundingRateHistory("BTCUSDT", 8);
+// [{ fundingRate: 0.0001, fundingTime: 170800.., markPrice: 65000 }, ...]
+
+// 글로벌 롱/숏 비율
+await binance.getLongShortRatio("BTCUSDT", "1h", 5);
+// [{ longShortRatio: 1.23, longAccount: 0.55, shortAccount: 0.45, timestamp: ... }, ...]
+
+// 탑 트레이더 롱/숏 비율
+await binance.getTopTraderLongShortRatio("BTCUSDT", "1h", 5);
+// [{ longShortRatio: 1.45, ... }, ...]
+
+// 테이커 매수/매도 비율
+await binance.getTakerBuySellVolume("BTCUSDT", "1h", 5);
+// [{ buySellRatio: 0.95, buyVol: 12000, sellVol: 12600, ... }, ...]
+
+// 종합 심리 데이터 (위 5개를 병렬 호출)
+await binance.getMarketSentiment("BTCUSDT");
+```
+
+### 8.2 하이퍼리퀴드 시장 데이터
+
+`HyperliquidService`에 `getMetaAndAssetCtxs()` 메서드로 모든 자산의 시장 데이터를 단일 API 호출로 수집:
+
+```typescript
+await hl.getMetaAndAssetCtxs();
+// [{ coin: "BTC", funding: 0.0001, openInterest: 85000, premium: 0.002,
+//    oraclePx: 65000, markPx: 65010, midPx: 65005, dayNtlVlm: 500000000, ... }]
+```
+
+### 8.3 심리 분석 결과 (CoinSentiment)
+
+수집된 데이터는 코인별로 다음과 같이 구조화된다:
+
+```json
+{
+  "symbol": "BTC",
+  "timestamp": "2026-02-16T12:00:00Z",
+  "binance": {
+    "openInterest": 85000.5,
+    "fundingHistory": [{ "rate": 0.0001, "time": 1708000000 }],
+    "longShortRatio": { "latest": 1.23, "trend": "increasing" },
+    "topTraderRatio": { "latest": 1.45, "trend": "stable" },
+    "takerVolume": { "buySellRatio": 0.95, "trend": "decreasing" }
+  },
+  "hyperliquid": {
+    "funding": 0.0001, "openInterest": 82000,
+    "premium": 0.002, "dayVolume": 500000000
+  },
+  "sentiment_summary": {
+    "funding_direction": "neutral",
+    "oi_level": "high",
+    "crowd_bias": "long_heavy",
+    "smart_money_bias": "strong_long",
+    "taker_pressure": "sell_dominant",
+    "overall": "mixed"
+  }
+}
+```
+
+### 8.4 Rate Limit 고려
+
+- 바이낸스 전체 심리 데이터: 상위 20개 코인만 수집 (5 API × 20 = 100 calls)
+- 하이퍼리퀴드: `metaAndAssetCtxs` 단일 호출로 전체 자산 커버
+- `collect-sentiment.ts`는 non-critical 스텝 — 실패해도 파이프라인 계속 진행
+
+---
+
+## 9. 실시간 가격 데이터 (대시보드 연동)
 
 대시보드에서 실시간 가격을 표시하기 위해 DB의 최신 스냅샷을 조회하는 API가 제공된다.
 
-### 8.1 API 엔드포인트
+### 9.1 API 엔드포인트
 
 ```
 GET /api/live-prices
 ```
 
-### 8.2 응답 형태
+### 9.2 응답 형태
 
 ```json
 [
@@ -289,7 +376,7 @@ GET /api/live-prices
 ]
 ```
 
-### 8.3 대시보드 갱신 주기
+### 9.3 대시보드 갱신 주기
 
 | 데이터 | 주기 | 비고 |
 |--------|------|------|
@@ -307,3 +394,4 @@ GET /api/live-prices
 - [03-analysis-agent.md](./03-analysis-agent.md) — analyzer 스킬 (데이터 소비자)
 - [06-config-and-deployment.md](./06-config-and-deployment.md) — config.yaml 전체 구조
 - [08-dashboard.md](./08-dashboard.md) — 웹 대시보드 상세 스펙
+- [10-ai-decision.md](./10-ai-decision.md) — AI 자율 투자 판단 (심리 데이터 소비자)

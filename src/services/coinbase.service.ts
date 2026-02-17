@@ -1,17 +1,42 @@
 /**
  * Coinbase Agentic Wallet 서비스
  *
- * awal CLI를 통해 Agentic Wallet을 제어한다.
- * - 잔고 조회: bunx awal balance --json
- * - 주소 조회: bunx awal address --json
- * - USDC 전송: bunx awal send <amount> <address> --json
+ * 읽기 작업(잔고/주소/상태)은 사이드카 캐시 파일을 사용하고,
+ * 쓰기 작업(전송/트레이드)은 Node.js 브릿지를 통해 awal IPC로 통신한다.
  *
- * 사전 조건: `bunx awal auth login` + `bunx awal auth verify`로 인증 완료
+ * 사전 조건: awal-sidecar가 실행 중이어야 읽기 작업이 동작함
  */
 
 import { createLogger } from "../utils/logger";
+import { existsSync, readFileSync } from "fs";
+import { resolve } from "path";
 
 const logger = createLogger("Coinbase:AW");
+const AWAL_CACHE_FILE = "/tmp/ai-trader-awal-cache.json";
+
+interface AwalSidecarCache {
+  status: "ok" | "error" | "unknown";
+  balance: number;
+  address: string | null;
+  updatedAt: string | null;
+  error: string | null;
+}
+
+function readSidecarCache(): AwalSidecarCache | null {
+  try {
+    if (!existsSync(AWAL_CACHE_FILE)) return null;
+    const raw = readFileSync(AWAL_CACHE_FILE, "utf-8");
+    const data = JSON.parse(raw) as AwalSidecarCache;
+    // 60초 이내 캐시만 유효
+    if (data.updatedAt) {
+      const age = Date.now() - new Date(data.updatedAt).getTime();
+      if (age > 60_000) return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 // ─── 실제 CLI 응답 타입 (검증됨) ───
 
@@ -147,107 +172,61 @@ export class CoinbaseService {
   private cachedAddress: string | null = null;
 
   /**
-   * 인증 상태 확인
-   *
-   * 실제 응답:
-   * { server: { running: true, pid: 72251 },
-   *   auth: { authenticated: true, email: "user@example.com" } }
+   * 인증 상태 확인 (사이드카 캐시만 사용 — CLI 폴백 없음)
    */
   async checkStatus(): Promise<{ authenticated: boolean; email?: string }> {
-    const result = await runAwalCli(["status"]);
-
-    if (!result.success) {
-      return { authenticated: false };
+    const cache = readSidecarCache();
+    if (cache) {
+      return { authenticated: cache.status === "ok" };
     }
-
-    const data = result.data as AwalStatusResponse;
-    return {
-      authenticated: data?.auth?.authenticated ?? false,
-      email: data?.auth?.email,
-    };
+    // 캐시 없으면 미인증으로 간주
+    return { authenticated: false };
   }
 
   /**
-   * 지갑 주소 조회 (캐시 포함)
-   *
-   * 실제 응답: "0xB9C971e2d682d4e90b1dd0eaCA7385e6887F3f76" (문자열)
+   * 지갑 주소 조회 (사이드카 캐시만 사용)
    */
   async getAddress(): Promise<string> {
     if (this.cachedAddress) return this.cachedAddress;
 
-    const result = await runAwalCli(["address"]);
-
-    if (!result.success) {
-      throw new Error(`지갑 주소 조회 실패: ${result.error}`);
+    const cache = readSidecarCache();
+    if (cache?.address) {
+      this.cachedAddress = cache.address;
+      return cache.address;
     }
 
-    let addr = "";
-    // 문자열로 직접 반환됨
-    if (typeof result.data === "string") {
-      addr = result.data;
-    } else {
-      // 객체인 경우 address 필드 시도
-      const data = result.data as Record<string, unknown>;
-      addr = (data?.address as string) || "";
-    }
-
-    if (addr) this.cachedAddress = addr;
-    return addr;
+    throw new Error("지갑 주소를 찾을 수 없습니다. awal-sidecar를 실행하세요.");
   }
 
   /**
-   * USDC 잔고 조회 (Base 네트워크)
-   *
-   * 실제 응답:
-   * { address: "0x...", chain: "Base",
-   *   balances: { USDC: { raw: "0", formatted: "0.00", decimals: 6 }, ... } }
+   * USDC 잔고 조회 (사이드카 캐시 우선, CLI 폴백 없음)
    */
-  async getUsdcBalance(chain?: string): Promise<number> {
-    const args = ["balance"];
-    if (chain) args.push("--chain", chain);
-
-    const result = await runAwalCli(args);
-
-    if (!result.success) {
-      throw new Error(`잔고 조회 실패: ${result.error}`);
-    }
-
-    const data = result.data as AwalBalanceResponse;
-
-    if (typeof data === "object" && data !== null && data.balances) {
-      const usdc = data.balances.USDC;
-      if (usdc) {
-        return parseFloat(usdc.formatted) || 0;
+  async getUsdcBalance(_chain?: string): Promise<number> {
+    // 사이드카 캐시에서 읽기 (상태와 무관하게 캐시가 있으면 사용)
+    const cache = readSidecarCache();
+    if (cache) {
+      if (cache.status !== "ok") {
+        logger.warn("awal 인증 안 됨, 잔고 0 반환", { error: cache.error });
       }
+      return cache.balance;
     }
 
+    // 캐시 없으면 0 반환 (CLI 폴백 제거 — 타임아웃 방지)
+    logger.warn("awal 사이드카 캐시 없음, 잔고 0 반환. sidecar를 실행하세요.");
     return 0;
   }
 
   /**
-   * 전체 잔고 조회 (모든 토큰)
+   * 전체 잔고 조회 (사이드카 캐시 우선, CLI 폴백 없음)
    */
   async getBalances(): Promise<Record<string, number>> {
-    const args = ["balance"];
-    const result = await runAwalCli(args);
-
-    if (!result.success) {
-      throw new Error(`잔고 조회 실패: ${result.error}`);
+    const cache = readSidecarCache();
+    if (cache) {
+      return { USDC: cache.balance };
     }
 
-    const data = result.data as AwalBalanceResponse;
-    const balances: Record<string, number> = {};
-
-    if (typeof data === "object" && data !== null && data.balances) {
-      for (const [token, info] of Object.entries(data.balances)) {
-        const val = parseFloat((info as { formatted: string }).formatted);
-        if (!isNaN(val)) {
-          balances[token] = val;
-        }
-      }
-    }
-
-    return balances;
+    logger.warn("awal 사이드카 캐시 없음. sidecar를 실행하세요.");
+    return { USDC: 0 };
   }
 
   /**

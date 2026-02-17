@@ -62,7 +62,7 @@ OpenClaw는 로컬 머신에서 실행되는 **Gateway 데몬**이다. Gateway�
 
 ---
 
-## 3. 스킬 구성 (4개)
+## 3. 스킬 구성 (5개)
 
 각 스킬은 `skills/` 디렉토리 아래에 `SKILL.md`와 TypeScript 스크립트로 구성된다. OpenClaw 에이전트는 스킬의 지침에 따라 `exec` 도구로 스크립트를 실행한다.
 
@@ -70,6 +70,7 @@ OpenClaw는 로컬 머신에서 실행되는 **Gateway 데몬**이다. Gateway�
 |------|---------|------|-----------|
 | **data-collector** | `skills/data-collector/` | 바이낸스 선물 + 하이퍼리퀴드 가격 수집 | Binance Futures, HyperLiquid Info API |
 | **analyzer** | `skills/analyzer/` | 가격 차이 분석, 기술적 지표, 매매 시그널 생성 | 내부 데이터 |
+| **ai-decision** | `skills/ai-decision/` | 시장 심리 수집 + AI 자율 투자 판단 + 시그널 필터링 | Binance Futures, HyperLiquid, OpenClaw AI |
 | **trader** | `skills/trader/` | 하이퍼리퀴드 주문 실행, 포지션 관리 | HyperLiquid Exchange API |
 | **wallet-manager** | `skills/wallet-manager/` | HyperLiquid 잔고 모니터링 + Coinbase Agentic Wallet 자금 리밸런싱 | HyperLiquid, Coinbase Agentic Wallet |
 
@@ -112,54 +113,102 @@ OpenClaw는 로컬 머신에서 실행되는 **Gateway 데몬**이다. Gateway�
 
 ## 5. 실행 흐름 요약
 
-### 5.1 트레이딩 파이프라인 (5단계)
+### 5.1 트레이딩 파이프라인 (7단계 + 독립 모니터)
 
-OpenClaw cron 또는 웹 대시보드의 **Run All** 버튼으로 실행한다:
+Runner (`src/runner.ts`) 또는 웹 대시보드의 **자동매매 시작** 버튼으로 실행한다. OpenClaw AI 에이전트가 4단계에서 자율적으로 투자 판단을 내린다:
 
 ```
-[파이프라인 실행]
+[파이프라인 실행 — Runner 또는 OpenClaw 에이전트]
 
 1. 가격 수집 (data-collector)
-   └── bun run scripts/collect-prices.ts
+   └── bun run skills/data-collector/scripts/collect-prices.ts
        ├── 바이낸스 선물 가격 수집 (Rate Limiter 적용)
        ├── 하이퍼리퀴드 가격 수집 (Rate Limiter 적용)
        └── DB + data/snapshots/latest.json 저장
 
-2. 시그널 분석 (analyzer)
-   └── bun run scripts/analyze.ts
-       ├── 스프레드 분석 + 기술적 지표
+2. 기술적 분석 (analyzer)
+   └── bun run skills/analyzer/scripts/analyze.ts
+       ├── 스프레드 분석 + 기술적 지표 (전략 프리셋 적용)
        └── data/signals/latest.json 생성
 
-3. 자금 리밸런싱 (wallet-manager) ← NEW
-   └── bun run scripts/manage-wallet.ts --action auto-rebalance
-       ├── Coinbase ↔ HyperLiquid 잔고 확인
-       ├── HL 부족 시 Coinbase에서 자동 충전
-       └── HL 과다 시 Coinbase로 자동 회수
+3. 시장 심리 수집 (ai-decision)
+   └── bun run skills/ai-decision/scripts/collect-sentiment.ts
+       ├── 바이낸스: OI, 롱/숏 비율, 탑 트레이더 포지션, 테이커 매수/매도, 펀딩비
+       ├── 하이퍼리퀴드: 펀딩비, OI, 프리미엄, 24시간 거래량
+       └── data/sentiment/latest.json 저장
 
-4. 거래 실행 (trader)
-   └── bun run scripts/execute-trade.ts
-       ├── 시그널 검증 + 리스크 체크
+4. ★ AI 자율 투자 판단 (ai-decision) ★
+   └── bun run skills/ai-decision/scripts/summarize.ts
+       ├── 기술적 분석 + 시장 심리 + 현재 포지션 + 잔고 종합 요약
+       └── OpenClaw AI가 데이터를 분석하여 독립적 투자 결정
+   └── bun run skills/ai-decision/scripts/apply-decision.ts --decisions '<JSON>'
+       ├── AI가 승인/거부한 종목에 대해 시그널 파일 수정
+       └── 기술적 근거 + 심리적 근거를 reason에 기록
+
+5. 자금 리밸런싱 (wallet-manager)
+   └── bun run skills/wallet-manager/scripts/manage-wallet.ts --action auto-rebalance
+       ├── Coinbase ↔ HyperLiquid 잔고 확인
+       └── 잔고 부족 시 자동 충전
+
+6. 거래 실행 (trader)
+   └── bun run skills/trader/scripts/execute-trade.ts
+       ├── AI가 승인한 시그널만 실행 (필터링 완료)
        ├── 하이퍼리퀴드 주문 실행
        └── SQLite 거래 로그 저장
 
-5. 포지션 모니터링 (trader)
-   └── bun run scripts/execute-trade.ts --action monitor
-       ├── SL/TP/트레일링 스탑 체크
-       └── 조건 충족 시 자동 청산
+7. 결과 보고
+   └── AI 판단 근거(기술적/심리적), 승인/거부 종목, 시장 분위기 요약
+
+[독립 프로세스 — Position Monitor]
+   └── bun run src/position-monitor.ts
+       ├── 15초 주기로 열린 포지션 SL/TP/트레일링 스탑 체크
+       ├── 조건 충족 시 즉시 청산
+       └── 포지션 없으면 5분 후 자동 종료
 ```
 
-### 5.2 웹 대시보드 제어
+> **Note:** 포지션 모니터링은 파이프라인과 분리된 독립 프로세스로 실행된다. Runner가 거래 실행 후 자동으로 시작하며, 1회 실행(`--once`) 후에도 백그라운드에서 유지된다.
 
-- **Run All**: 위 5단계를 순차 실행, 진행 상황 실시간 표시
-- **개별 실행**: 각 단계를 독립적으로 실행 가능
+> **AI 자율 판단:** 4단계에서 OpenClaw AI 에이전트가 기술적 지표(Spread, RSI, MACD, BB, MA)와 시장 심리(군중 편향, 스마트 머니, 펀딩비, OI, 테이커 압력)를 종합 분석하여 자율적으로 투자 결정을 내린다. 단일 지표가 아닌 **합류(confluence)** 기반 판단을 수행한다.
+
+### 5.2 입금 흐름
+
+```
+[사용자 → HyperLiquid 입금]
+
+1. 사용자가 Arbitrum 네트워크에 USDC 입금
+2. 대시보드 또는 CLI에서 자동 입금 실행
+   └── bun run skills/wallet-manager/scripts/deposit-to-hl.ts
+       ├── Arbitrum USDC 잔고 확인
+       ├── USDC ERC20 transfer → HyperLiquid Bridge2 컨트랙트
+       └── ~1분 내 HyperLiquid Spot 계정 입금 완료
+3. Unified Account에서 Spot USDC가 Perps 마진으로 자동 활용
+```
+
+### 5.3 웹 대시보드 제어
+
+- **자동매매 시작/정지**: OpenClaw 에이전트 또는 직접 실행 모드
+- **1회 실행 (Run Once)**: 파이프라인 1회 실행 + 포지션 모니터 자동 시작
+- **포지션 모니터**: 독립 시작/정지 제어
 - **Paper/Live 모드 전환**: 대시보드에서 즉시 전환
+- **전략 선택**: Conservative / Balanced / Aggressive
+- **Arbitrum → HL 입금**: 대시보드에서 원클릭 입금
 - **Kill Switch**: 긴급 거래 중단
 
-### 5.3 대화 기반 (Telegram/Discord)
+### 5.4 대화 기반 (Telegram)
 
-- "현재 포지션 보여줘" → trader 스킬 호출
-- "잔고 확인해줘" → wallet-manager 스킬 호출
-- "거래 중지해" → KILL_SWITCH 생성
+Telegram 봇(`@aiiiiitrading_bot`)을 통해 OpenClaw 에이전트에게 자연어 명령을 내릴 수 있다. 대시보드 버튼과 동일한 기능을 제공한다:
+
+| 명령 | 동작 |
+|------|------|
+| "자동매매 시작" / "start" | Runner 연속 실행 시작 |
+| "자동매매 정지" / "stop" | Runner 정지 |
+| "1회 실행" / "run once" | 파이프라인 1회 실행 |
+| "잔고" / "balance" | HyperLiquid + Coinbase 잔고 조회 |
+| "포지션" / "positions" | 열린 포지션 조회 |
+| "일일요약" / "daily" | 오늘의 거래 요약 |
+| "전략 변경 aggressive" | 전략 프리셋 변경 |
+| "긴급 청산" / "emergency" | Kill Switch + 전량 청산 |
+| "최근 로그" / "logs" | 최근 Runner 로그 표시 |
 
 ---
 
@@ -176,6 +225,11 @@ ai-trader/
 │   │   ├── SKILL.md
 │   │   └── scripts/
 │   │       └── analyze.ts
+│   ├── ai-decision/              # AI 자율 투자 판단 스킬 (NEW)
+│   │   └── scripts/
+│   │       ├── collect-sentiment.ts  # 시장 심리 데이터 수집
+│   │       ├── summarize.ts          # AI 판단용 종합 요약
+│   │       └── apply-decision.ts     # AI 결정 적용 (시그널 필터링)
 │   ├── trader/
 │   │   ├── SKILL.md
 │   │   └── scripts/
@@ -183,12 +237,18 @@ ai-trader/
 │   └── wallet-manager/
 │       ├── SKILL.md
 │       └── scripts/
-│           └── manage-wallet.ts
+│           ├── manage-wallet.ts
+│           ├── deposit-to-hl.ts     # Arbitrum → HL 자동 입금
+│           └── spot-to-perp.ts      # Spot ↔ Perp 전송 (비통합 계정용)
 ├── src/                          # TypeScript 소스 코드
+│   ├── runner.ts                 # 연속 트레이딩 러너 (7단계 오케스트레이터)
+│   ├── position-monitor.ts       # 독립 포지션 모니터 (15초 주기)
 │   ├── services/
-│   │   ├── binance.service.ts    # 바이낸스 API + Rate Limiter
-│   │   ├── hyperliquid.service.ts # 하이퍼리퀴드 API + Rate Limiter
+│   │   ├── binance.service.ts    # 바이낸스 API + Rate Limiter + 시장 심리
+│   │   ├── hyperliquid.service.ts # 하이퍼리퀴드 API (Unified Account 대응)
 │   │   └── coinbase.service.ts   # awal CLI 래퍼
+│   ├── strategies/
+│   │   └── presets.ts            # 전략 프리셋 (Conservative/Balanced/Aggressive)
 │   ├── models/
 │   │   ├── price-snapshot.ts
 │   │   ├── trade-signal.ts
@@ -199,7 +259,9 @@ ai-trader/
 │   └── utils/
 │       ├── config.ts
 │       ├── logger.ts
-│       ├── rate-limiter.ts       # Token Bucket Rate Limiter (NEW)
+│       ├── file.ts
+│       ├── openclaw.ts           # OpenClaw 바이너리 탐지 및 에이전트 실행
+│       ├── rate-limiter.ts       # Token Bucket Rate Limiter
 │       └── risk-manager.ts
 ├── dashboard/                    # 웹 대시보드 (SvelteKit) (NEW)
 │   ├── src/
@@ -223,11 +285,17 @@ ai-trader/
 │   │       ├── wallet/           # 지갑 & 입금 주소
 │   │       ├── control/          # 봇 제어
 │   │       └── api/              # REST API 엔드포인트
+│   │           ├── bot/          # 봇 제어 (runner, monitor, strategy, deposit 등)
+│   │           ├── balances/     # 실시간 잔고
+│   │           ├── prices/       # 실시간 가격
+│   │           └── ...           # trades, signals, positions, coins 등
 │   ├── package.json
 │   └── svelte.config.js
 ├── data/                         # 런타임 데이터
 │   ├── snapshots/
 │   ├── signals/
+│   ├── sentiment/                # 시장 심리 데이터 (NEW)
+│   │   └── latest.json
 │   └── ai-trader.db
 ├── AGENTS.md
 ├── config.yaml
@@ -275,3 +343,6 @@ ai-trader/
 | [06-config-and-deployment.md](./06-config-and-deployment.md) | OpenClaw 설정 및 배포 |
 | [07-data-flow.md](./07-data-flow.md) | 데이터 흐름 및 오케스트레이션 |
 | [08-dashboard.md](./08-dashboard.md) | 웹 대시보드 상세 스펙 |
+| [09-strategy.md](./09-strategy.md) | 투자 전략 시스템 |
+| [10-ai-decision.md](./10-ai-decision.md) | AI 자율 투자 판단 시스템 |
+| [11-telegram.md](./11-telegram.md) | 텔레그램 연동 |

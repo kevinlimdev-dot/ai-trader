@@ -33,10 +33,12 @@ metadata: {"openclaw":{"requires":{"bins":["bun"]},"primaryEnv":"HYPERLIQUID_PRI
 bun run {baseDir}/scripts/execute-trade.ts
 ```
 
-포지션 모니터링 (SL/TP/트레일링 스탑 체크):
+포지션 모니터링 (레거시 — 1회 체크):
 ```
 bun run {baseDir}/scripts/execute-trade.ts --action monitor
 ```
+
+> **Note:** 실전 포지션 모니터링은 독립 프로세스 `src/position-monitor.ts`가 15초 주기로 수행한다. Runner가 거래 실행 후 자동으로 시작하며, 대시보드에서도 독립 제어가 가능하다.
 
 포지션 조회:
 ```
@@ -75,13 +77,14 @@ bun run {baseDir}/scripts/execute-trade.ts --action daily-summary
 - 연속 API 에러 5회 시 비상 중지
 - 1분 내 5% 이상 급변 시 비상 모드
 
-## 리스크 규칙
+## 리스크 규칙 (전략 프리셋에 따라 변동)
 
-- 거래당 최대 리스크: 잔고의 2%
-- 최대 포지션: 잔고의 10%
-- 동시 포지션: 최대 3개
-- 일일 최대 거래: 50회
-- 기본 레버리지: 5x (최대 10x)
+- 거래당 최대 리스크: 잔고의 2~5% (전략별)
+- 최대 포지션: 잔고의 10~25% (전략별)
+- 동시 포지션: 최대 5~15개 (전략별)
+- 일일 최대 거래: 100~500회 (전략별)
+- 기본 레버리지: 5x~10x (전략별, 최대 20x)
+- AI 자율 판단이 거부한 시그널은 실행하지 않음
 
 ## 설정
 
@@ -223,7 +226,20 @@ src/utils/
 
 ---
 
+## 8. AI 필터링 통합
+
+`execute-trade.ts`는 `data/signals/latest.json`에서 시그널을 읽는데, 이 파일은 이미 AI 자율 판단(`apply-decision.ts`)을 거친 상태이다:
+
+1. `ai_reviewed: true`인 시그널 → AI가 검토 완료
+2. `action: "HOLD"` + `ai_reason` 있는 시그널 → AI가 거부 (실행 안 함)
+3. `action: "LONG"/"SHORT"` + `ai_reviewed: true` → AI가 승인 (실행)
+
+AI 판단이 적용되지 않은 시그널(`ai_reviewed` 없음)은 기존 로직대로 처리한다.
+
+---
+
 ## 관련 문서
 
 - [03-analysis-agent.md](./03-analysis-agent.md) — analyzer 스킬 (시그널 제공자)
 - [05-wallet-agent.md](./05-wallet-agent.md) — wallet-manager 스킬 (자금 관리)
+- [10-ai-decision.md](./10-ai-decision.md) — AI 자율 투자 판단 시스템
