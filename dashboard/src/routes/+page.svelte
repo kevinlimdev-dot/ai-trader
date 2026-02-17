@@ -1129,18 +1129,9 @@
 						<p class="text-[10px] text-[var(--text-secondary)] text-right mt-0.5">{((walletHlVal / walletTotalVal) * 100).toFixed(1)}%</p>
 					{/if}
 
-					<!-- HL 상세 내역 (접이식) -->
+					<!-- HL 상세 내역 -->
 					{#if liveBalances?.hlDetail && (liveBalances.hlDetail.spot.length > 0 || liveBalances.hlDetail.perp > 0)}
 						<div class="mt-2 pt-2 border-t border-[var(--border)]/50 space-y-1">
-							{#if liveBalances.hlDetail.perp > 0}
-								<div class="flex justify-between text-[11px]">
-									<span class="text-[var(--text-secondary)] flex items-center gap-1">
-										<span class="w-1 h-1 rounded-full bg-[var(--accent-yellow)]"></span>
-										Perp Margin
-									</span>
-									<span class="text-[var(--accent-purple)] font-medium">${liveBalances.hlDetail.perp.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-								</div>
-							{/if}
 							{#each liveBalances.hlDetail.spot as s}
 								<div class="flex justify-between text-[11px]">
 									<span class="text-[var(--text-secondary)] flex items-center gap-1">
@@ -1151,6 +1142,15 @@
 									<span class="text-[var(--accent-purple)] font-medium">${s.usdValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
 								</div>
 							{/each}
+							{#if liveBalances.hlDetail.perp > 0}
+								<div class="flex justify-between text-[11px] mt-1 pt-1 border-t border-[var(--border)]/30">
+									<span class="text-[var(--text-secondary)] flex items-center gap-1">
+										<span class="w-1 h-1 rounded-full bg-[var(--accent-yellow)]"></span>
+										투자중 (Perp Margin)
+									</span>
+									<span class="text-[var(--accent-yellow)] font-medium">${liveBalances.hlDetail.perp.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+								</div>
+							{/if}
 						</div>
 					{/if}
 				</div>

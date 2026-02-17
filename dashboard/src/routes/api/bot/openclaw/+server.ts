@@ -133,36 +133,46 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ success: false, error: 'OpenClaw agent already running' });
 	}
 
-	let prompt: string;
-	switch (action) {
-		case 'pipeline':
-			prompt = 'ai-trader 스킬의 7단계 파이프라인을 즉시 실행하라. 질문/선택지/확인 금지. 적극적으로 거래 기회를 찾고, score ±0.3 이상이면 반드시 진입. 모두 HOLD면 파라미터 조정 후 재시도. 전부 실행한 뒤 결과만 보고.';
-			break;
-		case 'status':
-			prompt = '현재 투자 현황 알려줘. 포지션, 잔고, 오늘 PnL, 전략 상태 포함해서 보고해줘.';
-			break;
-		default:
-			prompt = action;
-	}
-
 	// 이전 출력 파일 초기화
 	writeFileSync(OUTPUT_FILE, '');
 
-	const sessionId = `dashboard-${Date.now()}`;
-	try {
-		const proc = Bun.spawn([bin, 'agent', '--agent', 'trader', '--session-id', sessionId, '--message', prompt], {
+	let proc: ReturnType<typeof Bun.spawn>;
+
+	if (action === 'pipeline') {
+		// 하이브리드 파이프라인: Runner --once 사용 (1-4/6-7 직접 실행, 5단계만 OpenClaw AI 판단)
+		proc = Bun.spawn(['bun', 'run', resolve(PROJECT_ROOT, 'src/runner.ts'), '--once'], {
 			cwd: PROJECT_ROOT,
 			stdout: Bun.file(OUTPUT_FILE),
 			stderr: Bun.file(OUTPUT_FILE),
 			env: { ...process.env },
 			stdin: 'ignore',
 		});
+	} else {
+		let prompt: string;
+		switch (action) {
+			case 'status':
+				prompt = '현재 투자 현황 알려줘. 포지션, 잔고, 오늘 PnL, 전략 상태 포함해서 보고해줘.';
+				break;
+			default:
+				prompt = action;
+		}
 
+		const sessionId = `dashboard-${Date.now()}`;
+		proc = Bun.spawn([bin, 'agent', '--agent', 'main', '--session-id', sessionId, '--message', prompt], {
+			cwd: PROJECT_ROOT,
+			stdout: Bun.file(OUTPUT_FILE),
+			stderr: Bun.file(OUTPUT_FILE),
+			env: { ...process.env },
+			stdin: 'ignore',
+		});
+	}
+
+	try {
 		const statusData: OpenClawStatus = {
 			state: 'running',
 			pid: proc.pid,
 			action,
-			prompt,
+			prompt: action === 'pipeline' ? '하이브리드 파이프라인 (Runner --once)' : action,
 			startedAt: new Date().toISOString(),
 		};
 		writeFileSync(STATUS_FILE, JSON.stringify(statusData));

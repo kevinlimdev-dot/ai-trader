@@ -124,7 +124,7 @@ export async function runOpenClawAgent(
 
 	const start = Date.now();
 	const timeoutMs = opts.timeoutMs ?? 300_000;
-	const agentId = opts.agentId ?? 'trader';
+	const agentId = opts.agentId ?? 'main';
 
 	try {
 		const spawnOpts: Parameters<typeof Bun.spawn>[1] = {

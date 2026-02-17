@@ -367,10 +367,13 @@ async function fetchHlBalance(): Promise<HlBalanceDetail> {
 			}
 		}
 
-		// perpVal(accountValue)가 spotTotalUsd 이상이면 Unified Account에서 이미 합산된 값
-		// perpVal < spotTotalUsd이면 perp에는 포지션 마진/PnL만 있고 spot은 별도 → 합산
-		const totalUsd = perpVal >= spotTotalUsd ? perpVal : perpVal + spotTotalUsd;
-		console.log(`[HL Balance] ${account.address} -> perp: $${perpVal.toFixed(2)}, spot: $${spotTotalUsd.toFixed(2)} (${spotBalances.map(s => `${s.coin}: ${s.total}`).join(', ')}), total: $${totalUsd.toFixed(2)}`);
+		// HyperLiquid Unified Account:
+		// - spot USDC = 전체 HL 자산 (사용 가능 + 마진에 묶인 것 포함)
+		// - perp accountValue = 포지션 마진 + 미실현 PnL (spot의 일부, 이중 계산 금지)
+		// - 총 자산 = spot 잔고 (perp 마진은 이미 spot에 포함)
+		// - spot이 없고 perp만 있는 경우(레거시/직접 입금)는 perpVal 사용
+		const totalUsd = spotTotalUsd > 0 ? spotTotalUsd : perpVal;
+		console.log(`[HL Balance] ${account.address} -> 총자산: $${totalUsd.toFixed(2)}, 투자중(perp margin): $${perpVal.toFixed(2)}, spot: $${spotTotalUsd.toFixed(2)} (${spotBalances.map(s => `${s.coin}: ${s.total}`).join(', ')})`);
 
 		return { perp: perpVal, spot: spotBalances, spotTotalUsd, totalUsd };
 	} catch (err) {

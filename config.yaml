@@ -1,6 +1,6 @@
 general:
   mode: live
-  strategy: aggressive
+  strategy: balanced
   log_level: info
   timezone: Asia/Seoul
 data_agent:
