@@ -117,46 +117,9 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	let prompt: string;
 	switch (action) {
-		case 'pipeline': {
-			const cd = `cd /Users/kevin/Documents/GitHub/ai-trader`;
-			prompt = `너는 자율적인 AI 투자 판단자야. 아래 7단계를 순서대로 실행해.
-4단계에서 기술적 분석 + 시장 심리를 종합하여 독립적으로 투자 결정을 내려.
-
-## 1단계: 가격 수집
-${cd} && bun run skills/data-collector/scripts/collect-prices.ts
-
-## 2단계: 기술적 분석
-${cd} && bun run skills/analyzer/scripts/analyze.ts
-
-## 3단계: 시장 심리 수집
-${cd} && bun run skills/ai-decision/scripts/collect-sentiment.ts
-
-## 4단계: ★ AI 자율 투자 판단 (핵심) ★
-${cd} && bun run skills/ai-decision/scripts/summarize.ts
-
-이 JSON에 기술적 지표와 시장 심리(market_sentiment)가 모두 포함됨.
-
-판단 시 고려:
-- 기술적: composite_score, RSI, MACD cross, 볼린저 위치
-- 심리: crowd_bias(역발상), smart_money(추종), taker_pressure(모멘텀), funding_rate(극단치 반전), OI 변화
-- 군중 편향과 스마트 머니 방향이 반대면 스마트 머니를 따라가
-- 펀딩비가 극단적이면 반대 포지션이 유리 (펀딩비 수취)
-- 여러 데이터가 합류(confluence)하는 방향만 진입
-
-decisions JSON을 만들어 전달:
-${cd} && bun run skills/ai-decision/scripts/apply-decision.ts --decisions '<JSON 배열>'
-형식: [{"symbol":"BTC","action":"LONG","confidence":0.7,"reason":"RSI 반등 + 스마트머니 롱 + 군중 숏(역발상)"}]
-
-## 5단계: 자금 확인
-${cd} && bun run skills/wallet-manager/scripts/manage-wallet.ts --action auto-rebalance
-
-## 6단계: 거래 실행
-${cd} && bun run skills/trader/scripts/execute-trade.ts
-
-## 7단계: 결과 보고
-승인/거부 종목별 기술적+심리적 판단 근거를 상세히 설명해.`;
+		case 'pipeline':
+			prompt = 'ai-trader 스킬의 "AI 자율 투자 판단 파이프라인 (7단계)"를 지금 즉시 실행해. 질문하지 말고 전부 실행한 뒤 결과만 보고해.';
 			break;
-		}
 		case 'status':
 			prompt = '현재 투자 현황 알려줘. 포지션, 잔고, 오늘 PnL, 전략 상태 포함해서 보고해줘.';
 			break;
@@ -167,8 +130,9 @@ ${cd} && bun run skills/trader/scripts/execute-trade.ts
 	// 이전 출력 파일 초기화
 	writeFileSync(OUTPUT_FILE, '');
 
+	const sessionId = `dashboard-${Date.now()}`;
 	try {
-		const proc = Bun.spawn([bin, 'agent', '--agent', 'main', '--message', prompt], {
+		const proc = Bun.spawn([bin, 'agent', '--agent', 'trader', '--session-id', sessionId, '--message', prompt], {
 			cwd: PROJECT_ROOT,
 			stdout: Bun.file(OUTPUT_FILE),
 			stderr: Bun.file(OUTPUT_FILE),
