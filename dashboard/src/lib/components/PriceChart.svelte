@@ -47,7 +47,7 @@
 		});
 
 		hlSeries = chart.addSeries(LineSeries, {
-			color: '#a855f7',
+			color: '#10b981',
 			lineWidth: 2,
 			title: 'HyperLiquid',
 		});

@@ -239,9 +239,9 @@
 		maxPos: number;
 	}
 	const STRATEGIES: StrategyInfo[] = [
-		{ name: 'conservative', label: 'Conservative', description: '보수적 · 자본 보존', leverage: '3x', risk: '1.5%', rr: '2.5', maxPos: 3 },
-		{ name: 'balanced', label: 'Balanced', description: '멀티TF 합류 · 안정 승률', leverage: '5x', risk: '2%', rr: '2.0', maxPos: 4 },
-		{ name: 'aggressive', label: 'Aggressive', description: '15m 모멘텀 추종', leverage: '7x', risk: '3%', rr: '2.0', maxPos: 6 },
+		{ name: 'conservative', label: '보수적', description: '자본 보존 우선', leverage: '3x', risk: '1.5%', rr: '2.5', maxPos: 3 },
+		{ name: 'balanced', label: '균형', description: '멀티TF 합류 · 안정 승률', leverage: '5x', risk: '2%', rr: '2.0', maxPos: 4 },
+		{ name: 'aggressive', label: '공격적', description: '15m 모멘텀 추종', leverage: '7x', risk: '3%', rr: '2.0', maxPos: 6 },
 	];
 	let currentStrategy: StrategyName = $state('balanced');
 	let strategyLoading = $state(false);
@@ -301,7 +301,7 @@
 			.replace(/^(.*(?:LONG|매수|성공|완료|✅|✓).*)$/gm, '<span style="color:var(--accent-green)">$1</span>')
 			.replace(/^(.*(?:SHORT|매도).*)$/gm, '<span style="color:var(--accent-yellow)">$1</span>')
 			.replace(/^(.*(?:ERROR|error|실패|❌|⛔).*)$/gm, '<span style="color:var(--accent-red)">$1</span>')
-			.replace(/^(.*(?:━━━|═══|───|시작|사이클).*)$/gm, '<span style="color:var(--accent-blue)">$1</span>')
+			.replace(/^(.*(?:━━━|═══|───|시작|사이클).*)$/gm, '<span style="color:var(--accent-green)">$1</span>')
 			.replace(/^(.*(?:HOLD|스킵|NEUTRAL).*)$/gm, '<span style="opacity:0.5">$1</span>');
 	}
 
@@ -580,75 +580,65 @@
 
 <svelte:head><title>AI Trader - Dashboard</title></svelte:head>
 
-<div class="space-y-5">
+<div class="space-y-4 min-w-0 overflow-hidden">
 	<!-- Header -->
-	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-2xl font-bold">Dashboard</h1>
-			<p class="text-sm text-[var(--text-secondary)]">Trading bot overview</p>
-		</div>
-		<div class="flex items-center gap-3">
-			{#if dashboard.killSwitch}
-				<span class="px-3 py-1 rounded-lg text-sm font-medium bg-[var(--accent-red)]/15 text-[var(--accent-red)] border border-[var(--accent-red)]/30">KILL SWITCH ON</span>
-			{/if}
-			<!-- OpenClaw 연결 상태 -->
-			<span class="px-2.5 py-1 rounded-lg text-[10px] font-medium flex items-center gap-1.5
-				{openclawReady
-					? 'bg-[var(--accent-green)]/10 text-[var(--accent-green)] border border-[var(--accent-green)]/20'
-					: 'bg-[var(--accent-red)]/10 text-[var(--accent-red)] border border-[var(--accent-red)]/20'
-				}">
-				<span class="w-1.5 h-1.5 rounded-full {openclawReady ? 'bg-[var(--accent-green)]' : 'bg-[var(--accent-red)]'}"></span>
-				OpenClaw {openclawReady ? 'ON' : !openclawConn.installed ? 'Not Installed' : 'Daemon OFF'}
-			</span>
-			<span class="px-3 py-1 rounded-lg text-sm font-medium {dashboard.mode === 'live' ? 'bg-[var(--accent-green)]/15 text-[var(--accent-green)] border border-[var(--accent-green)]/30' : 'bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)] border border-[var(--accent-yellow)]/30'}">
-				{dashboard.mode.toUpperCase()}
-			</span>
-			<button
-				onclick={runFullPipeline}
-				disabled={pipelineRunning || runnerActive}
-				class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer
-					{pipelineRunning
-						? 'bg-[var(--accent-blue)]/20 text-[var(--accent-blue)] border border-[var(--accent-blue)]/30'
-						: 'bg-[var(--accent-blue)] text-white hover:opacity-90'
-					}
-					disabled:cursor-not-allowed disabled:opacity-50"
-			>
-				{#if pipelineRunning}
-					<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-					</svg>
-					실행 중...
-				{:else}
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-						<path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-					</svg>
-					1회 실행
-				{/if}
-			</button>
-		</div>
+	<div>
+		<h1 class="text-xl sm:text-2xl font-bold">Dashboard</h1>
+		<p class="text-sm text-[var(--text-secondary)]">트레이딩 봇 현황</p>
 	</div>
 
-	<!-- ═══════════ Strategy Selector ═══════════ -->
-	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-		<div class="flex items-center justify-between">
-			<div class="flex items-center gap-3">
-				<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Strategy</h2>
-				<!-- Strategy Buttons -->
-				<div class="flex items-center rounded-lg border border-[var(--border)] overflow-hidden">
+	<!-- ═══════════ Bot Control (Strategy + Runner + 1회 실행) ═══════════ -->
+	<div class="box min-w-0">
+		<!-- Header: Title + 1회 실행 -->
+		<div class="flex items-center justify-between mb-4">
+			<h2 class="box-title">봇 컨트롤</h2>
+			<div class="flex items-center gap-2">
+				{#if dashboard.killSwitch}
+					<span class="px-2 py-1 rounded text-xs font-medium bg-[var(--accent-red)]/15 text-[var(--accent-red)] border border-[var(--accent-red)]/30">긴급 정지</span>
+				{/if}
+				<button
+					onclick={runFullPipeline}
+					disabled={pipelineRunning || runnerActive}
+					class="flex items-center gap-2 px-3 py-1.5 rounded text-xs sm:text-sm font-semibold transition-all cursor-pointer
+						{pipelineRunning
+							? 'bg-[var(--accent-green)]/20 text-[var(--accent-green)] border border-[var(--accent-green)]/30'
+							: 'bg-[var(--accent-green)] text-white hover:opacity-90'
+						}
+						disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					{#if pipelineRunning}
+						<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+						</svg>
+						실행 중...
+					{:else}
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+							<path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						1회 실행
+					{/if}
+				</button>
+			</div>
+		</div>
+
+		<!-- Strategy -->
+		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+			<div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 min-w-0">
+				<div class="flex items-center rounded border border-[#333] overflow-hidden">
 					{#each STRATEGIES as strat}
 						<button
 							onclick={() => setStrategy(strat.name)}
 							disabled={strategyLoading}
-							class="px-4 py-2 text-xs font-semibold transition-all cursor-pointer disabled:cursor-not-allowed
+							class="px-3 sm:px-4 py-1.5 text-xs font-semibold transition-all cursor-pointer disabled:cursor-not-allowed
 								{currentStrategy === strat.name
 									? strat.name === 'conservative'
-										? 'bg-[var(--accent-blue)] text-white'
+										? 'bg-[var(--accent-green)] text-white'
 										: strat.name === 'balanced'
 										? 'bg-[var(--accent-yellow)] text-black'
 										: 'bg-[var(--accent-red)] text-white'
-									: 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
+									: 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
 								}"
 						>
 							{strat.label}
@@ -656,186 +646,168 @@
 					{/each}
 				</div>
 			</div>
-
-			<!-- Active Strategy Summary -->
-			<div class="flex items-center gap-4 text-xs">
-				<span class="text-[var(--text-secondary)]">
-					Lev: <strong class="text-white">{activeStrategy.leverage}</strong>
-				</span>
-				<span class="text-[var(--text-secondary)]">
-					Risk: <strong class="text-white">{activeStrategy.risk}</strong>
-				</span>
-				<span class="text-[var(--text-secondary)]">
-					R:R: <strong class="text-white">{activeStrategy.rr}</strong>
-				</span>
-				<span class="text-[var(--text-secondary)]">
-					Max Pos: <strong class="text-white">{activeStrategy.maxPos}</strong>
-				</span>
-				<span class="text-[10px] text-[var(--text-secondary)] italic">{activeStrategy.description}</span>
+			<div class="flex items-center gap-3 text-xs flex-wrap">
+				<span class="text-[var(--text-secondary)]">레버리지: <strong class="text-white">{activeStrategy.leverage}</strong></span>
+				<span class="text-[var(--text-secondary)]">위험도: <strong class="text-white">{activeStrategy.risk}</strong></span>
+				<span class="text-[var(--text-secondary)]">손익비: <strong class="text-white">{activeStrategy.rr}</strong></span>
+				<span class="text-[var(--text-secondary)]">최대 포지션: <strong class="text-white">{activeStrategy.maxPos}</strong></span>
+				<span class="hidden sm:inline text-[10px] text-[var(--text-secondary)] italic">{activeStrategy.description}</span>
 			</div>
+		</div>
+
+		<!-- Runner -->
+		<div class="border-t border-[#333] pt-3">
+			<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+				<div class="flex flex-wrap items-center gap-3">
+					<div class="flex items-center gap-2">
+						{#if runnerStatus.state === 'running'}
+							<span class="relative flex h-3 w-3">
+								<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent-green)] opacity-75"></span>
+								<span class="relative inline-flex rounded-full h-3 w-3 bg-[var(--accent-green)]"></span>
+							</span>
+							<span class="text-sm font-semibold text-[var(--accent-green)]">실행 중</span>
+						{:else if runnerStatus.state === 'idle'}
+							<span class="relative flex h-3 w-3">
+								<span class="animate-pulse absolute inline-flex h-full w-full rounded-full bg-[var(--accent-green)] opacity-50"></span>
+								<span class="relative inline-flex rounded-full h-3 w-3 bg-[var(--accent-green)]"></span>
+							</span>
+							<span class="text-sm font-semibold text-[var(--accent-green)]">대기 중</span>
+						{:else if runnerStatus.state === 'error'}
+							<span class="w-3 h-3 rounded-full bg-[var(--accent-red)]"></span>
+							<span class="text-sm font-semibold text-[var(--accent-red)]">오류 정지</span>
+						{:else}
+							<span class="w-3 h-3 rounded-full bg-[var(--text-secondary)] opacity-50"></span>
+							<span class="text-sm font-semibold text-[var(--text-secondary)]">정지됨</span>
+						{/if}
+					</div>
+					{#if runnerActive || runnerStatus.cycleCount > 0}
+						<div class="flex items-center gap-2 sm:gap-3 text-xs text-[var(--text-secondary)]">
+							<span>사이클: <strong class="text-white">{runnerStatus.cycleCount}</strong></span>
+							<span>성공: <strong class="text-[var(--accent-green)]">{runnerStatus.successCount}</strong></span>
+							{#if runnerStatus.failCount > 0}
+								<span>실패: <strong class="text-[var(--accent-red)]">{runnerStatus.failCount}</strong></span>
+							{/if}
+							{#if runnerStatus.intervalSec > 0}
+								<span>간격: {runnerStatus.intervalSec}초</span>
+							{/if}
+						</div>
+					{/if}
+					{#if runnerStatus.state === 'idle' && runnerStatus.nextCycleAt}
+						<span class="text-xs px-2 py-0.5 rounded bg-[var(--accent-green)]/15 text-[var(--accent-green)]">
+							다음: {formatCountdown(runnerStatus.nextCycleAt)}
+						</span>
+						<button
+							onclick={runnerRunNow}
+							class="text-xs px-2 py-0.5 rounded bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)] hover:bg-[var(--accent-yellow)]/25 cursor-pointer"
+						>
+							즉시 실행
+						</button>
+					{/if}
+				</div>
+				<button
+					onclick={toggleRunner}
+					disabled={runnerLoading}
+					class="flex items-center justify-center gap-2 w-full sm:w-auto px-5 py-2.5 rounded text-sm font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+						{runnerActive
+							? 'bg-[var(--accent-red)] text-white hover:opacity-90'
+							: 'bg-[var(--accent-green)] text-white hover:opacity-90'
+						}"
+				>
+					{#if runnerLoading}
+						<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+						</svg>
+					{:else if runnerActive}
+						<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+						자동매매 정지
+					{:else}
+						<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+						자동매매 시작
+					{/if}
+				</button>
+			</div>
+
+			<!-- 포지션 모니터 -->
+			<div class="mt-3 pt-3 border-t border-[#333] flex flex-wrap items-center justify-between gap-2">
+				<div class="flex items-center gap-2">
+					<span class="w-2 h-2 rounded-full {monitorStatus.state === 'running' ? 'bg-[var(--accent-green)] animate-pulse' : 'bg-[var(--text-secondary)]'}"></span>
+					<span class="text-xs text-[var(--text-secondary)]">포지션 모니터</span>
+					{#if monitorStatus.state === 'running'}
+						<span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-green)]/15 text-[var(--accent-green)] font-medium">{monitorStatus.intervalSec}초 주기</span>
+						{#if monitorStatus.openPositions > 0}
+							<span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)] font-medium">포지션 {monitorStatus.openPositions}건</span>
+						{/if}
+						{#if monitorStatus.closedCount > 0}
+							<span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-purple)]/15 text-[var(--accent-purple)] font-medium">청산 {monitorStatus.closedCount}건</span>
+						{/if}
+						{#if monitorStatus.lastCheckAt}
+							<span class="text-[10px] text-[var(--text-secondary)]">#{monitorStatus.checkCount} · {timeAgo(monitorStatus.lastCheckAt, tick)}</span>
+						{/if}
+					{:else}
+						<span class="text-[10px] text-[var(--text-secondary)]">비활성</span>
+					{/if}
+				</div>
+				<button
+					onclick={toggleMonitor}
+					class="text-[10px] px-2.5 py-1 rounded cursor-pointer transition-all
+						{monitorStatus.state === 'running'
+							? 'bg-[var(--accent-red)]/15 text-[var(--accent-red)] hover:bg-[var(--accent-red)]/25'
+							: 'bg-[var(--accent-green)]/15 text-[var(--accent-green)] hover:bg-[var(--accent-green)]/25'
+						}"
+				>
+					{monitorStatus.state === 'running' ? '정지' : '시작'}
+				</button>
+			</div>
+
+			<!-- 마지막 사이클 결과 -->
+			{#if runnerStatus.lastCycle}
+				<div class="mt-3 pt-3 border-t border-[#333]">
+					<div class="flex items-center gap-2 text-xs text-[var(--text-secondary)] mb-2">
+						<span>마지막 사이클:</span>
+						<span class="{runnerStatus.lastCycle.success ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'} font-medium">
+							{runnerStatus.lastCycle.success ? '성공' : '실패'}
+						</span>
+						<span>({(runnerStatus.lastCycle.durationMs / 1000).toFixed(1)}초)</span>
+						<span>{timeAgo(runnerStatus.lastCycle.completedAt)}</span>
+					</div>
+					<div class="flex flex-wrap gap-1.5">
+						{#each Object.entries(runnerStatus.lastCycle.steps) as [stepId, step]}
+							<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium
+								{step.success
+									? 'bg-[var(--accent-green)]/10 text-[var(--accent-green)]'
+									: 'bg-[var(--accent-red)]/10 text-[var(--accent-red)]'}"
+								title={step.error || `${step.durationMs}ms`}
+							>
+								{#if step.success}
+									<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+								{:else}
+									<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+								{/if}
+								{stepId}
+							</span>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
+			{#if runnerStatus.state === 'error' && runnerStatus.stopReason}
+				<p class="mt-2 text-xs text-[var(--accent-red)]">정지 사유: {runnerStatus.stopReason}</p>
+			{/if}
 		</div>
 	</div>
 
-	<!-- ═══════════ Runner Control + Open Positions ═══════════ -->
-	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-	<!-- Continuous Runner Control -->
-	<div class="bg-[var(--bg-card)] border rounded-xl p-4
-		{runnerActive
-			? 'border-[var(--accent-green)]/40'
-			: runnerStatus.state === 'error'
-			? 'border-[var(--accent-red)]/40'
-			: 'border-[var(--border)]'}">
-		<div class="flex items-center justify-between">
-			<div class="flex items-center gap-4">
-				<!-- 상태 표시등 -->
-				<div class="flex items-center gap-2">
-					{#if runnerStatus.state === 'running'}
-						<span class="relative flex h-3 w-3">
-							<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent-green)] opacity-75"></span>
-							<span class="relative inline-flex rounded-full h-3 w-3 bg-[var(--accent-green)]"></span>
-						</span>
-						<span class="text-sm font-semibold text-[var(--accent-green)]">실행 중</span>
-					{:else if runnerStatus.state === 'idle'}
-						<span class="relative flex h-3 w-3">
-							<span class="animate-pulse absolute inline-flex h-full w-full rounded-full bg-[var(--accent-blue)] opacity-50"></span>
-							<span class="relative inline-flex rounded-full h-3 w-3 bg-[var(--accent-blue)]"></span>
-						</span>
-						<span class="text-sm font-semibold text-[var(--accent-blue)]">대기 중</span>
-					{:else if runnerStatus.state === 'error'}
-						<span class="w-3 h-3 rounded-full bg-[var(--accent-red)]"></span>
-						<span class="text-sm font-semibold text-[var(--accent-red)]">오류 정지</span>
-					{:else}
-						<span class="w-3 h-3 rounded-full bg-[var(--text-secondary)] opacity-50"></span>
-						<span class="text-sm font-semibold text-[var(--text-secondary)]">정지됨</span>
-					{/if}
-				</div>
-
-				<!-- 통계 -->
-				{#if runnerActive || runnerStatus.cycleCount > 0}
-					<div class="flex items-center gap-3 text-xs text-[var(--text-secondary)]">
-						<span>사이클: <strong class="text-white">{runnerStatus.cycleCount}</strong></span>
-						<span>성공: <strong class="text-[var(--accent-green)]">{runnerStatus.successCount}</strong></span>
-						{#if runnerStatus.failCount > 0}
-							<span>실패: <strong class="text-[var(--accent-red)]">{runnerStatus.failCount}</strong></span>
-						{/if}
-						{#if runnerStatus.intervalSec > 0}
-							<span>간격: {runnerStatus.intervalSec}초</span>
-						{/if}
-					</div>
-				{/if}
-
-				<!-- 다음 실행 카운트다운 -->
-				{#if runnerStatus.state === 'idle' && runnerStatus.nextCycleAt}
-					<span class="text-xs px-2 py-0.5 rounded bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]">
-						다음: {formatCountdown(runnerStatus.nextCycleAt)}
-					</span>
-					<button
-						onclick={runnerRunNow}
-						class="text-xs px-2 py-0.5 rounded bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)] hover:bg-[var(--accent-yellow)]/25 cursor-pointer"
-					>
-						즉시 실행
-					</button>
-				{/if}
-			</div>
-
-			<!-- 시작/정지 버튼 -->
-			<button
-				onclick={toggleRunner}
-				disabled={runnerLoading}
-				class="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
-					{runnerActive
-						? 'bg-[var(--accent-red)] text-white hover:opacity-90'
-						: 'bg-[var(--accent-green)] text-white hover:opacity-90'
-					}"
-			>
-				{#if runnerLoading}
-					<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-					</svg>
-				{:else if runnerActive}
-					<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-					자동매매 정지
-				{:else}
-					<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-					자동매매 시작
-				{/if}
-			</button>
-		</div>
-
-		<!-- 포지션 모니터 상태 -->
-		<div class="mt-3 pt-3 border-t border-[var(--border)] flex items-center justify-between">
-			<div class="flex items-center gap-2">
-				<span class="w-2 h-2 rounded-full {monitorStatus.state === 'running' ? 'bg-[var(--accent-green)] animate-pulse' : 'bg-[var(--text-secondary)]'}"></span>
-				<span class="text-xs text-[var(--text-secondary)]">포지션 모니터</span>
-				{#if monitorStatus.state === 'running'}
-					<span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-green)]/15 text-[var(--accent-green)] font-medium">{monitorStatus.intervalSec}초 주기</span>
-					{#if monitorStatus.openPositions > 0}
-						<span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-yellow)]/15 text-[var(--accent-yellow)] font-medium">포지션 {monitorStatus.openPositions}건</span>
-					{/if}
-					{#if monitorStatus.closedCount > 0}
-						<span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent-purple)]/15 text-[var(--accent-purple)] font-medium">청산 {monitorStatus.closedCount}건</span>
-					{/if}
-					{#if monitorStatus.lastCheckAt}
-						<span class="text-[10px] text-[var(--text-secondary)]">#{monitorStatus.checkCount} · {timeAgo(monitorStatus.lastCheckAt, tick)}</span>
-					{/if}
-				{:else}
-					<span class="text-[10px] text-[var(--text-secondary)]">비활성</span>
-				{/if}
-			</div>
-			<button
-				onclick={toggleMonitor}
-				class="text-[10px] px-2.5 py-1 rounded-lg cursor-pointer transition-all
-					{monitorStatus.state === 'running'
-						? 'bg-[var(--accent-red)]/15 text-[var(--accent-red)] hover:bg-[var(--accent-red)]/25'
-						: 'bg-[var(--accent-green)]/15 text-[var(--accent-green)] hover:bg-[var(--accent-green)]/25'
-					}"
-			>
-				{monitorStatus.state === 'running' ? '정지' : '시작'}
-			</button>
-		</div>
-
-		<!-- 마지막 사이클 결과 (있을 때) -->
-		{#if runnerStatus.lastCycle}
-			<div class="mt-3 pt-3 border-t border-[var(--border)]">
-				<div class="flex items-center gap-2 text-xs text-[var(--text-secondary)] mb-2">
-					<span>마지막 사이클:</span>
-					<span class="{runnerStatus.lastCycle.success ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'} font-medium">
-						{runnerStatus.lastCycle.success ? '성공' : '실패'}
-					</span>
-					<span>({(runnerStatus.lastCycle.durationMs / 1000).toFixed(1)}초)</span>
-					<span>{timeAgo(runnerStatus.lastCycle.completedAt)}</span>
-				</div>
-				<div class="flex flex-wrap gap-1.5">
-					{#each Object.entries(runnerStatus.lastCycle.steps) as [stepId, step]}
-						<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium
-							{step.success
-								? 'bg-[var(--accent-green)]/10 text-[var(--accent-green)]'
-								: 'bg-[var(--accent-red)]/10 text-[var(--accent-red)]'}"
-							title={step.error || `${step.durationMs}ms`}
-						>
-							{#if step.success}
-								<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-							{:else}
-								<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-							{/if}
-							{stepId}
-						</span>
-					{/each}
-				</div>
-			</div>
-		{/if}
-
-		<!-- 오류 사유 -->
-		{#if runnerStatus.state === 'error' && runnerStatus.stopReason}
-			<p class="mt-2 text-xs text-[var(--accent-red)]">정지 사유: {runnerStatus.stopReason}</p>
-		{/if}
+	<!-- KPI Cards -->
+	<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+		<KpiCard label="오늘 PnL" value={`${pnlSign}$${dashboard.todayPnl.toFixed(2)}`} color={pnlColor} sub={`수수료: $${dashboard.todayFees.toFixed(2)}`} />
+		<KpiCard label="승률" value={`${dashboard.winRate}%`} color={dashboard.winRate >= 50 ? 'green' : 'red'} sub={`오늘 ${dashboard.todayTradeCount}건 거래`} />
+		<KpiCard label="보유 포지션" value={String(dashboard.openPositionCount)} color="green" />
+		<KpiCard label="총 자산" value={liveBalances ? `$${liveBalances.total.toLocaleString(undefined, {minimumFractionDigits: 2})}` : dashboard.balance ? `$${dashboard.balance.total.toLocaleString(undefined, {minimumFractionDigits: 2})}` : 'N/A'} color="green" sub={liveBalances ? `CB $${liveBalances.coinbase.toFixed(0)} + HL $${liveBalances.hyperliquid.toFixed(0)}` : dashboard.balance ? `CB $${dashboard.balance.coinbase.toFixed(0)} + HL $${dashboard.balance.hyperliquid.toFixed(0)}` : ''} />
 	</div>
 
 	<!-- AI 파라미터 조정 알림 -->
 	{#if aiAdjustment}
-		<div class="bg-[var(--bg-card)] border border-[var(--accent-yellow)]/30 rounded-xl p-3">
+		<div class="box">
 			<div class="flex items-center justify-between mb-2">
 				<div class="flex items-center gap-2">
 					<svg class="w-4 h-4 text-[var(--accent-yellow)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -866,13 +838,13 @@
 	{/if}
 
 	<!-- Open Positions (HyperLiquid Live) -->
-	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+	<div class="box min-w-0 overflow-hidden">
 		<div class="flex items-center justify-between mb-3">
 			<div class="flex items-center gap-2">
-				<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Open Positions</h2>
-				<span class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-blue)]/15 text-[var(--accent-blue)] font-medium">HL Live</span>
+				<h2 class="box-title">보유 포지션</h2>
+				<span class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-green)]/15 text-[var(--accent-green)] font-medium">HL 실시간</span>
 			</div>
-			<span class="text-[9px] text-[var(--text-secondary)]">{hlPositions.length}건</span>
+				<span class="text-[9px] text-[var(--text-secondary)]">{hlPositions.length}건 보유</span>
 		</div>
 		{#if hlPositions.length > 0}
 			<div class="space-y-1.5">
@@ -919,8 +891,8 @@
 								</button>
 							</div>
 						</div>
-						<div class="flex items-center justify-between mt-1 text-[10px] text-[var(--text-secondary)]">
-							<div class="flex gap-3">
+						<div class="flex flex-wrap items-center justify-between mt-1 text-[10px] text-[var(--text-secondary)] gap-x-3 gap-y-0.5">
+							<div class="flex flex-wrap gap-x-3 gap-y-0.5">
 								<span>진입 <span class="font-mono text-[var(--text-primary)]">${pos.entryPx.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></span>
 								<span>현재 <span class="font-mono text-[var(--text-primary)]">${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></span>
 								{#if pos.liquidationPx}
@@ -941,22 +913,23 @@
 				</span>
 			</div>
 		{:else}
-			<p class="text-[var(--text-secondary)] text-sm py-4 text-center">포지션 없음</p>
+			<div class="flex items-center justify-center min-h-[120px]">
+				<p class="text-xs text-[var(--text-secondary)]">포지션 없음</p>
+			</div>
 		{/if}
 	</div>
 
-	</div><!-- /grid Runner + Positions -->
 
 	<!-- OpenClaw Pipeline Progress -->
 	{#if pipelineSteps.length > 0 || openclawState.state !== 'idle'}
-		<div class="bg-[var(--bg-card)] border rounded-xl overflow-hidden
-			{openclawState.state === 'failed' || pipelineHasError ? 'border-[var(--accent-red)]/30' :
-			 openclawState.state === 'done' || pipelineDone ? 'border-[var(--accent-green)]/30' :
-			 'border-[var(--accent-blue)]/30'}">
+		<div class="box overflow-hidden !p-0
+			{openclawState.state === 'failed' || pipelineHasError ? '!border-[var(--accent-red)]/30' :
+			 openclawState.state === 'done' || pipelineDone ? '!border-[var(--accent-green)]/30' :
+			 '!border-[var(--accent-green)]/30'}">
 			<div class="px-4 py-3 flex items-center justify-between">
 				<div class="flex items-center gap-3">
 					{#if openclawState.state === 'running'}
-						<svg class="w-4 h-4 animate-spin text-[var(--accent-blue)]" fill="none" viewBox="0 0 24 24">
+						<svg class="w-4 h-4 animate-spin text-[var(--accent-green)]" fill="none" viewBox="0 0 24 24">
 							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 						</svg>
@@ -977,7 +950,7 @@
 						{:else if openclawState.state === 'failed'}
 							OpenClaw 파이프라인 실패
 						{:else}
-							Pipeline
+							파이프라인
 						{/if}
 					</span>
 					{#if openclawState.state === 'running' && openclawState.startedAt}
@@ -1018,13 +991,13 @@
 	<!-- ═══════════ Chart + Recent Trades (side by side) ═══════════ -->
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 		<!-- Price Chart (선택된 코인) -->
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3">
-			<div class="flex items-center justify-between mb-2">
-				<div class="flex items-center gap-2">
-					<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">{chartSymbol} Chart</h2>
+		<div class="box min-w-0 overflow-hidden">
+			<div class="flex items-center justify-between mb-2 gap-2">
+				<div class="flex items-center gap-2 min-w-0">
+					<h2 class="box-title whitespace-nowrap">{chartSymbol} 차트</h2>
 					<div class="flex items-center gap-4 text-[10px]">
 						<span class="flex items-center gap-1"><span class="w-2.5 h-0.5 bg-[#eab308] inline-block"></span> Binance</span>
-						<span class="flex items-center gap-1"><span class="w-2.5 h-0.5 bg-[#a855f7] inline-block"></span> HL</span>
+						<span class="flex items-center gap-1"><span class="w-2.5 h-0.5 bg-[#10b981] inline-block"></span> HL</span>
 					</div>
 				</div>
 				<div class="flex items-center gap-1">
@@ -1033,7 +1006,7 @@
 							onclick={() => selectChartSymbol(sym)}
 							class="text-[9px] px-1.5 py-0.5 rounded cursor-pointer transition-all
 								{chartSymbol === sym
-									? 'bg-[var(--accent-blue)] text-white font-bold'
+									? 'bg-[var(--accent-green)] text-white font-bold'
 									: 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-white'
 								}"
 						>{sym}</button>
@@ -1045,45 +1018,47 @@
 					<PriceChart symbol={chartSymbol} data={chartData[chartSymbol]} />
 				{/key}
 			{:else}
-				<div class="flex items-center justify-center h-[280px] text-[var(--text-secondary)] text-xs">
-					<p>차트 데이터 로딩 중...</p>
+				<div class="flex items-center justify-center h-[280px]">
+					<p class="text-xs text-[var(--text-secondary)]">차트 데이터 로딩 중...</p>
 				</div>
 			{/if}
 		</div>
 
 		<!-- Recent Trades -->
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-3 py-2">
+		<div class="box min-w-0">
 			<div class="flex items-center justify-between mb-1">
-				<h2 class="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Recent Trades</h2>
-				<a href="/trades" class="text-[10px] text-[var(--accent-blue)] hover:underline">View all</a>
+				<h2 class="box-title">최근 거래</h2>
+				<a href="/trades" class="text-[10px] text-[var(--accent-green)] hover:underline">전체 보기</a>
 			</div>
-			<TradesTable trades={dashboard.recentTrades} mini {livePrices} onSymbolClick={selectChartSymbol} />
+			<div class="overflow-x-auto -mx-3 px-3">
+				<TradesTable trades={dashboard.recentTrades} mini {livePrices} onSymbolClick={selectChartSymbol} />
+			</div>
 		</div>
 	</div>
 
 	<!-- ═══════════ Wallet Balances + Deposit Addresses ═══════════ -->
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 		<!-- Balance Cards (실시간 API 조회) -->
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="box min-w-0 overflow-hidden">
 			<div class="flex items-center justify-between mb-4">
-				<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Wallet Balances</h2>
+				<h2 class="box-title">지갑 잔고</h2>
 				{#if liveBalances}
 					<span class="flex items-center gap-1 text-[10px] text-[var(--text-secondary)]">
 						<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></span>
-						Live
+						실시간
 					</span>
 				{/if}
 			</div>
 
 			<!-- 총 자산 (대형) -->
-			<div class="bg-gradient-to-r from-[var(--accent-purple)]/15 to-[var(--accent-blue)]/15 border border-[var(--accent-purple)]/30 rounded-xl p-4 mb-4 text-center">
+			<div class="bg-gradient-to-r from-[var(--accent-green)]/15 to-[var(--accent-green)]/5 border border-[var(--accent-green)]/30 rounded-md p-3 sm:p-4 mb-4 text-center">
 				<p class="text-[11px] text-[var(--text-secondary)] font-medium mb-1 uppercase tracking-wider">총 자산</p>
-				<p class="text-3xl font-extrabold text-white tracking-tight">
+				<p class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
 					${walletTotalVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
 				</p>
 				{#if liveBalances}
 					<p class="text-[10px] text-[var(--text-secondary)] mt-1">
-						Coinbase + HyperLiquid
+						Coinbase + HyperLiquid 합산
 					</p>
 				{/if}
 			</div>
@@ -1094,17 +1069,17 @@
 				<div class="bg-[var(--bg-secondary)] rounded-lg p-3">
 					<div class="flex items-center justify-between">
 						<div class="flex items-center gap-2">
-							<span class="w-2 h-2 rounded-full bg-[var(--accent-blue)]"></span>
-							<span class="text-xs font-semibold text-[var(--accent-blue)]">Coinbase</span>
-							<span class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-blue)]/10 text-[var(--accent-blue)]">Base</span>
+							<span class="w-2 h-2 rounded-full bg-[var(--accent-green)]"></span>
+							<span class="text-xs font-semibold text-[var(--accent-green)]">Coinbase</span>
+							<span class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-green)]/10 text-[var(--accent-green)]">Base</span>
 						</div>
-						<span class="text-lg font-bold text-[var(--accent-blue)]">
+						<span class="text-lg font-bold text-[var(--accent-green)]">
 							${walletCbVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
 						</span>
 					</div>
 					{#if walletTotalVal > 0}
 						<div class="mt-1.5 h-1 bg-[var(--bg-card)] rounded-full overflow-hidden">
-							<div class="h-full bg-[var(--accent-blue)]/60 rounded-full" style="width: {Math.min(100, (walletCbVal / walletTotalVal) * 100)}%"></div>
+							<div class="h-full bg-[var(--accent-green)]/60 rounded-full" style="width: {Math.min(100, (walletCbVal / walletTotalVal) * 100)}%"></div>
 						</div>
 						<p class="text-[10px] text-[var(--text-secondary)] text-right mt-0.5">{((walletCbVal / walletTotalVal) * 100).toFixed(1)}%</p>
 					{/if}
@@ -1164,12 +1139,12 @@
 		</div>
 
 		<!-- 내 입금 지갑 주소 + 자동입금 -->
-		<div class="bg-[var(--bg-card)] border border-[var(--accent-green)]/30 rounded-xl p-4">
+		<div class="box min-w-0 overflow-hidden !border-[var(--accent-green)]/30">
 			<div class="flex items-center gap-2 mb-3">
 				<svg class="w-4 h-4 text-[var(--accent-green)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
 				</svg>
-				<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">내 입금 지갑</h2>
+				<h2 class="box-title">내 입금 지갑</h2>
 			</div>
 
 			<!-- HyperLiquid 입금 주소 -->
@@ -1186,7 +1161,7 @@
 						</code>
 						<button
 							onclick={() => walletAddresses?.hyperliquid && copyAddress(walletAddresses.hyperliquid.address, 'hl_main')}
-							class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-purple)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+							class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-green)] text-white hover:opacity-90 transition-opacity cursor-pointer"
 							title="주소 복사"
 						>
 							{#if copiedId === 'hl_main'}
@@ -1206,7 +1181,7 @@
 								{:else if arbUsdcBalance !== null}
 									<span class="text-xs font-bold text-[var(--accent-green)]">${arbUsdcBalance}</span>
 								{:else}
-									<button onclick={checkArbBalance} class="text-[10px] text-[var(--accent-blue)] hover:underline cursor-pointer">잔고 확인</button>
+									<button onclick={checkArbBalance} class="text-[10px] text-[var(--accent-green)] hover:underline cursor-pointer">잔고 확인</button>
 								{/if}
 							</div>
 							<button
@@ -1241,9 +1216,9 @@
 			{#if walletAddresses?.coinbase?.address}
 				<div class="bg-[var(--bg-secondary)] rounded-lg p-3">
 					<div class="flex items-center gap-2 mb-2">
-						<span class="w-2.5 h-2.5 rounded-full bg-[var(--accent-blue)]"></span>
-						<span class="text-xs font-semibold text-[var(--accent-blue)]">Coinbase</span>
-						<span class="text-[9px] px-1 py-0.5 rounded bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]">Base</span>
+						<span class="w-2.5 h-2.5 rounded-full bg-[var(--accent-green)]"></span>
+						<span class="text-xs font-semibold text-[var(--accent-green)]">Coinbase</span>
+						<span class="text-[9px] px-1 py-0.5 rounded bg-[var(--accent-green)]/15 text-[var(--accent-green)]">Base</span>
 					</div>
 					<div class="flex items-center gap-2">
 						<code class="flex-1 text-xs font-mono text-[var(--text-primary)] bg-[var(--bg-card)] px-2.5 py-2 rounded border border-[var(--border)] break-all select-all">
@@ -1251,7 +1226,7 @@
 						</code>
 						<button
 							onclick={() => walletAddresses?.coinbase?.address && copyAddress(walletAddresses.coinbase.address, 'cb_main')}
-							class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-blue)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+							class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-green)] text-white hover:opacity-90 transition-opacity cursor-pointer"
 							title="주소 복사"
 						>
 							{#if copiedId === 'cb_main'}
@@ -1265,27 +1240,21 @@
 			{/if}
 
 			{#if !walletAddresses?.hyperliquid && !walletAddresses?.coinbase?.address}
-				<p class="text-xs text-[var(--accent-red)] py-2">.env에 HYPERLIQUID_DEPOSIT_ADDRESS를 설정해주세요</p>
+				<div class="flex items-center justify-center min-h-[120px]">
+					<p class="text-xs text-[var(--accent-red)]">.env에 HYPERLIQUID_DEPOSIT_ADDRESS를 설정해주세요</p>
+				</div>
 			{/if}
 		</div>
-	</div>
-
-	<!-- KPI Cards (10s refresh) -->
-	<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-		<KpiCard label="Today PnL" value={`${pnlSign}$${dashboard.todayPnl.toFixed(2)}`} color={pnlColor} sub={`Fees: $${dashboard.todayFees.toFixed(2)}`} />
-		<KpiCard label="Win Rate" value={`${dashboard.winRate}%`} color={dashboard.winRate >= 50 ? 'green' : 'red'} sub={`${dashboard.todayTradeCount} trades today`} />
-		<KpiCard label="Open Positions" value={String(dashboard.openPositionCount)} color="blue" />
-		<KpiCard label="총 자산" value={liveBalances ? `$${liveBalances.total.toLocaleString(undefined, {minimumFractionDigits: 2})}` : dashboard.balance ? `$${dashboard.balance.total.toLocaleString(undefined, {minimumFractionDigits: 2})}` : 'N/A'} color="purple" sub={liveBalances ? `CB $${liveBalances.coinbase.toFixed(0)} + HL $${liveBalances.hyperliquid.toFixed(0)}` : dashboard.balance ? `CB $${dashboard.balance.coinbase.toFixed(0)} + HL $${dashboard.balance.hyperliquid.toFixed(0)}` : ''} />
 	</div>
 
 	<!-- ═══════════ AI 분석 판단 + 거래 활동 로그 ═══════════ -->
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
 	<!-- AI 분석 판단 -->
-	<div class="bg-[var(--bg-card)] border border-[var(--accent-blue)]/30 rounded-xl p-4">
+	<div class="box min-w-0 overflow-hidden !border-[var(--accent-green)]/30">
 		<div class="flex items-center justify-between mb-4">
 			<div class="flex items-center gap-2">
-				<svg class="w-5 h-5 text-[var(--accent-blue)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+				<svg class="w-5 h-5 text-[var(--accent-green)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
 				</svg>
 				<h2 class="text-sm font-bold uppercase tracking-wider">AI 분석 판단</h2>
@@ -1322,7 +1291,7 @@
 								<div class="flex items-center gap-3">
 									<span class="text-sm font-bold">{sig.symbol}</span>
 									<SignalBadge action={sig.action} confidence={sig.confidence} />
-									<span class="text-[10px] font-mono text-[var(--text-secondary)]">Score: {sig.analysis?.composite_score?.toFixed(3) ?? '-'}</span>
+									<span class="text-[10px] font-mono text-[var(--text-secondary)]">점수: {sig.analysis?.composite_score?.toFixed(3) ?? '-'}</span>
 								</div>
 								<div class="flex items-center gap-3">
 									<div class="text-right">
@@ -1340,7 +1309,7 @@
 							<!-- 지표 상세 (열렸을 때) -->
 							{#if signalExpanded === sig.symbol && sig.analysis}
 								<div class="border-t border-[var(--border)] px-3 py-3">
-									<div class="grid grid-cols-5 gap-2">
+									<div class="grid grid-cols-3 md:grid-cols-5 gap-2">
 										<!-- Spread -->
 										<div class="text-center">
 											<p class="text-[9px] text-[var(--text-secondary)] uppercase mb-1">Spread</p>
@@ -1406,7 +1375,7 @@
 									<div class="mt-3 pt-2 border-t border-[var(--border)]">
 										<p class="text-[10px] text-[var(--text-secondary)]">
 											<strong class="text-white">판단 근거:</strong>
-											Composite Score <strong class="{sig.analysis.composite_score > 0 ? 'text-[var(--accent-green)]' : sig.analysis.composite_score < 0 ? 'text-[var(--accent-red)]' : 'text-white'}">{sig.analysis.composite_score?.toFixed(3)}</strong>
+											종합 점수 <strong class="{sig.analysis.composite_score > 0 ? 'text-[var(--accent-green)]' : sig.analysis.composite_score < 0 ? 'text-[var(--accent-red)]' : 'text-white'}">{sig.analysis.composite_score?.toFixed(3)}</strong>
 											{#if sig.action === 'LONG'}
 												→ 임계값({activeStrategy.name === 'aggressive' ? '0.15' : activeStrategy.name === 'conservative' ? '0.50' : '0.30'}) 초과하여 <strong class="text-[var(--accent-green)]">매수 진입</strong>
 											{:else if sig.action === 'SHORT'}
@@ -1439,20 +1408,22 @@
 				</div>
 			{/if}
 		{:else}
-			<p class="text-[var(--text-secondary)] text-sm py-4 text-center">시그널 없음 — 가격 수집 후 분석을 실행하세요</p>
+			<div class="flex items-center justify-center min-h-[120px]">
+				<p class="text-xs text-[var(--text-secondary)]">시그널 없음 — 가격 수집 후 분석을 실행하세요</p>
+			</div>
 		{/if}
 	</div>
 
 	<!-- 거래 활동 로그 -->
-	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+	<div class="box min-w-0 overflow-hidden">
 		<div class="flex items-center justify-between mb-3">
 			<div class="flex items-center gap-2">
-				<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">거래 활동 로그</h2>
+				<h2 class="box-title">거래 활동 로그</h2>
 				{#if runnerActive}
 					<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></span>
 				{/if}
 			</div>
-			<span class="text-[9px] text-[var(--text-secondary)]">10s refresh</span>
+			<span class="text-[9px] text-[var(--text-secondary)]">10초 갱신</span>
 		</div>
 		{#if runnerLog.length > 0}
 			<div class="h-[320px] overflow-y-auto rounded-lg bg-[var(--bg-secondary)] p-2 font-mono text-[10px] leading-relaxed space-y-px">
@@ -1467,14 +1438,14 @@
 							: line.includes('HOLD') || line.includes('스킵')
 							? 'text-[var(--text-secondary)] opacity-60'
 							: line.includes('cycle') || line.includes('사이클') || line.includes('===')
-							? 'text-[var(--accent-blue)]'
+							? 'text-[var(--accent-green)]'
 							: 'text-[var(--text-secondary)]'
 						}">{line}</p>
 				{/each}
 			</div>
 		{:else}
-			<div class="h-[320px] flex items-center justify-center text-[var(--text-secondary)] text-xs">
-				<p>자동매매를 시작하면 여기에 실시간 로그가 표시됩니다</p>
+			<div class="h-[320px] flex items-center justify-center">
+				<p class="text-xs text-[var(--text-secondary)]">자동매매를 시작하면 여기에 실시간 로그가 표시됩니다</p>
 			</div>
 		{/if}
 	</div>
@@ -1484,19 +1455,20 @@
 	<!-- Available Trading Coins -->
 	{#if availableCoins.length > 0}
 		{@const activeSymbols = configSymbols}
-		{@const displayCoins = showAllCoins ? availableCoins : availableCoins.slice(0, 20)}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		{@const sortedCoins = [...availableCoins].sort((a, b) => {
+			const aActive = activeSymbols.includes(a.name) ? 0 : 1;
+			const bActive = activeSymbols.includes(b.name) ? 0 : 1;
+			return aActive - bActive;
+		})}
+		<div class="box min-w-0 overflow-hidden">
 			<div class="flex items-center justify-between mb-3">
 				<div class="flex items-center gap-2">
-					<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">거래 가능 코인</h2>
-					<span class="text-xs px-2 py-0.5 rounded-full bg-[var(--accent-blue)]/15 text-[var(--accent-blue)] font-medium">{availableCoins.length}개</span>
+					<h2 class="box-title">거래 가능 코인</h2>
+					<span class="text-xs px-2 py-0.5 rounded-full bg-[var(--accent-green)]/15 text-[var(--accent-green)] font-medium">{availableCoins.length}개</span>
 				</div>
-				<button onclick={() => showAllCoins = !showAllCoins} class="text-xs text-[var(--accent-blue)] hover:underline cursor-pointer">
-					{showAllCoins ? '접기' : `전체 보기 (${availableCoins.length})`}
-				</button>
 			</div>
 			<div class="flex flex-wrap gap-1.5">
-				{#each displayCoins as coin}
+				{#each sortedCoins as coin}
 					{@const isActive = activeSymbols.includes(coin.name)}
 					<span class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors
 						{isActive
@@ -1520,6 +1492,6 @@
 
 	<!-- Refresh Info -->
 	<div class="text-center text-[10px] text-[var(--text-secondary)] py-1">
-		Prices: 3s &middot; Dashboard: 10s &middot; Charts: 60s &middot; Binance quota-safe (DB read only)
+		가격: 3초 &middot; 대시보드: 10초 &middot; 차트: 60초 &middot; Binance 쿼터 안전 (DB 읽기 전용)
 	</div>
 </div>

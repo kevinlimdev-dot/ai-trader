@@ -1,13 +1,42 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import type { WalletAddresses } from '$lib/types';
+	import { goto } from '$app/navigation';
+	import type { WalletAddresses, SetupSummary } from '$lib/types';
 
 	interface Props {
 		mode?: string;
 		walletAddresses?: WalletAddresses | null;
+		setup?: SetupSummary | null;
+		open?: boolean;
+		switchingMode?: boolean;
+		onclose?: () => void;
+		ontogglemode?: () => void;
 	}
-	let { mode = 'paper', walletAddresses = null }: Props = $props();
+	let { mode = 'paper', walletAddresses = null, setup = null, open = false, switchingMode = false, onclose, ontogglemode }: Props = $props();
 	let copied = $state('');
+	let showWarnings = $state(false);
+
+	interface OpenClawInfo { installed: boolean; daemonRunning: boolean }
+	let openclawInfo: OpenClawInfo = $state({ installed: false, daemonRunning: false });
+	const openclawReady = $derived(openclawInfo.installed && openclawInfo.daemonRunning);
+
+	$effect(() => {
+		async function fetchOpenClaw() {
+			try {
+				const res = await fetch('/api/bot/openclaw');
+				const data = await res.json();
+				if (data.openclaw) openclawInfo = data.openclaw;
+			} catch { /* ignore */ }
+		}
+		fetchOpenClaw();
+		const interval = setInterval(fetchOpenClaw, 15000);
+		return () => clearInterval(interval);
+	});
+
+	const hasIssues = $derived(setup ? (setup.errors > 0 || setup.warnings > 0) : false);
+	const errorChecks = $derived(setup?.checks.filter(c => c.status === 'error') ?? []);
+	const warningChecks = $derived(setup?.checks.filter(c => c.status === 'warning') ?? []);
+	const okChecks = $derived(setup?.checks.filter(c => c.status === 'ok') ?? []);
 
 	const nav = [
 		{ href: '/', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -30,53 +59,193 @@
 			setTimeout(() => { copied = ''; }, 2000);
 		} catch { /* ignore */ }
 	}
+
+	function handleNav(href: string) {
+		goto(href);
+		onclose?.();
+	}
 </script>
 
-<aside class="w-56 bg-[var(--bg-secondary)] border-r border-[var(--border)] flex flex-col h-screen sticky top-0">
-	<div class="p-4 border-b border-[var(--border)]">
+<!-- Mobile overlay -->
+{#if open}
+	<button
+		class="fixed inset-0 bg-black/60 z-40 lg:hidden backdrop-blur-sm"
+		onclick={onclose}
+		aria-label="Close menu"
+	></button>
+{/if}
+
+<!-- Warnings modal -->
+{#if showWarnings}
+	<div class="fixed inset-0 z-[60] flex items-center justify-center p-4">
+		<button class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick={() => showWarnings = false} aria-label="Close"></button>
+		<div class="relative bg-[var(--bg-secondary)] border border-[#333] rounded-md w-full max-w-lg max-h-[80vh] overflow-y-auto shadow-2xl">
+			<div class="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] sticky top-0 bg-[var(--bg-secondary)]">
+				<h3 class="text-sm font-semibold text-white">Setup Status</h3>
+				<button onclick={() => showWarnings = false} class="text-[var(--text-secondary)] hover:text-white cursor-pointer" aria-label="Close">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			<div class="p-4 space-y-2">
+				{#each errorChecks as check}
+					<div class="flex items-start gap-3 px-3 py-2 rounded-lg bg-[var(--accent-red)]/8 border border-[var(--accent-red)]/20">
+						<span class="mt-0.5 w-2 h-2 rounded-full bg-[var(--accent-red)] flex-shrink-0"></span>
+						<div>
+							<p class="text-sm font-medium text-[var(--accent-red)]">{check.label}</p>
+							<p class="text-xs text-[var(--text-secondary)]">{check.message}</p>
+						</div>
+					</div>
+				{/each}
+				{#each warningChecks as check}
+					<div class="flex items-start gap-3 px-3 py-2 rounded-lg bg-[var(--accent-yellow)]/8 border border-[var(--accent-yellow)]/15">
+						<span class="mt-0.5 w-2 h-2 rounded-full bg-[var(--accent-yellow)] flex-shrink-0"></span>
+						<div>
+							<p class="text-sm font-medium text-[var(--accent-yellow)]">{check.label}</p>
+							<p class="text-xs text-[var(--text-secondary)]">{check.message}</p>
+						</div>
+					</div>
+				{/each}
+				{#each okChecks as check}
+					<div class="flex items-start gap-3 px-3 py-2 rounded-lg bg-[var(--accent-green)]/5 border border-[var(--accent-green)]/10">
+						<span class="mt-0.5 w-2 h-2 rounded-full bg-[var(--accent-green)] flex-shrink-0"></span>
+						<div>
+							<p class="text-sm font-medium text-[var(--accent-green)]">{check.label}</p>
+							<p class="text-xs text-[var(--text-secondary)]">{check.message}</p>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	</div>
+{/if}
+
+<aside
+	class="fixed top-0 left-0 z-50 w-64 bg-[var(--bg-secondary)] border-r border-[var(--border)] flex flex-col h-screen
+		transition-transform duration-300 ease-in-out
+		{open ? 'translate-x-0' : '-translate-x-full'}
+		lg:translate-x-0 lg:sticky lg:z-auto"
+>
+	<!-- Title -->
+	<div class="px-4 pt-4 pb-3 border-b border-[var(--border)]">
 		<div class="flex items-center justify-between">
 			<h1 class="text-lg font-bold text-white">AI Trader</h1>
-			<span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase
-				{mode === 'live'
-					? 'bg-[var(--accent-red)]/20 text-[var(--accent-red)]'
-					: 'bg-[var(--accent-yellow)]/20 text-[var(--accent-yellow)]'
-				}">
-				{mode}
-			</span>
+			<button class="lg:hidden text-[var(--text-secondary)] hover:text-white" onclick={onclose} aria-label="Close">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</button>
 		</div>
-		<p class="text-xs text-[var(--text-secondary)] mt-0.5">Trading Dashboard</p>
 	</div>
-	<nav class="flex-1 p-2 space-y-0.5">
+
+	<!-- Bot Status -->
+	<div class="px-3 py-3 border-b border-[var(--border)]">
+		<p class="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2 px-1">Bot Status</p>
+		<div class="space-y-1.5">
+			<!-- LIVE / PAPER toggle -->
+			<button
+				onclick={ontogglemode}
+				disabled={switchingMode}
+				class="group flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-all cursor-pointer
+					disabled:opacity-50 disabled:cursor-not-allowed
+				{mode === 'live'
+					? 'bg-[var(--accent-green)]/10 border border-[var(--accent-green)]/25 hover:bg-[var(--accent-green)]/20'
+					: 'bg-[var(--accent-yellow)]/10 border border-[var(--accent-yellow)]/25 hover:bg-[var(--accent-yellow)]/20'
+				}"
+			title={mode === 'live' ? '실제 자금으로 거래 — 클릭하여 Paper로 전환' : '모의 거래 — 클릭하여 Live로 전환'}
+		>
+			<span class="w-2 h-2 rounded-full flex-shrink-0 {mode === 'live' ? 'bg-[var(--accent-green)] animate-pulse' : 'bg-[var(--accent-yellow)]'}"></span>
+			<span class="font-semibold uppercase text-xs {mode === 'live' ? 'text-[var(--accent-green)]' : 'text-[var(--accent-yellow)]'}">
+				{switchingMode ? '전환 중...' : mode === 'live' ? 'Live Trading' : 'Paper Mode'}
+				</span>
+			</button>
+
+			<!-- OpenClaw status -->
+			<div class="flex items-center gap-2.5 px-3 py-2 rounded-lg
+				{openclawReady
+					? 'bg-[var(--accent-green)]/10 border border-[var(--accent-green)]/25'
+					: openclawInfo.installed
+					? 'bg-[var(--accent-yellow)]/10 border border-[var(--accent-yellow)]/25'
+					: 'bg-[var(--accent-red)]/10 border border-[var(--accent-red)]/25'
+				}">
+				<span class="w-2 h-2 rounded-full flex-shrink-0
+					{openclawReady
+						? 'bg-[var(--accent-green)]'
+						: openclawInfo.installed
+						? 'bg-[var(--accent-yellow)]'
+						: 'bg-[var(--accent-red)]'
+					}"></span>
+				<span class="font-semibold text-xs
+					{openclawReady
+						? 'text-[var(--accent-green)]'
+						: openclawInfo.installed
+						? 'text-[var(--accent-yellow)]'
+						: 'text-[var(--accent-red)]'
+					}">
+					OpenClaw {openclawReady ? 'Connected' : openclawInfo.installed ? 'Daemon OFF' : 'Not Installed'}
+				</span>
+			</div>
+
+			<!-- Warnings / Active -->
+			{#if hasIssues}
+				<button
+					onclick={() => showWarnings = true}
+					class="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-all cursor-pointer
+						{setup && setup.errors > 0
+							? 'bg-[var(--accent-red)]/10 border border-[var(--accent-red)]/25 hover:bg-[var(--accent-red)]/20'
+							: 'bg-[var(--accent-yellow)]/10 border border-[var(--accent-yellow)]/25 hover:bg-[var(--accent-yellow)]/20'
+						}"
+				>
+					<span class="w-2 h-2 rounded-full flex-shrink-0 {setup && setup.errors > 0 ? 'bg-[var(--accent-red)]' : 'bg-[var(--accent-yellow)]'}"></span>
+					<span class="font-semibold text-xs {setup && setup.errors > 0 ? 'text-[var(--accent-red)]' : 'text-[var(--accent-yellow)]'}">
+						{#if setup && setup.errors > 0}
+							{setup.errors} Error{setup.errors > 1 ? 's' : ''}
+						{/if}
+						{#if setup && setup.errors > 0 && setup.warnings > 0}
+							{' · '}
+						{/if}
+						{#if setup && setup.warnings > 0}
+							{setup.warnings} Warning{setup.warnings > 1 ? 's' : ''}
+						{/if}
+					</span>
+					<svg class="w-3.5 h-3.5 ml-auto text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+					</svg>
+				</button>
+			{:else}
+				<div class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[var(--accent-green)]/10 border border-[var(--accent-green)]/25">
+					<span class="w-2 h-2 rounded-full bg-[var(--accent-green)] flex-shrink-0"></span>
+					<span class="font-semibold text-xs text-[var(--accent-green)]">Active</span>
+				</div>
+			{/if}
+		</div>
+	</div>
+
+	<!-- Navigation -->
+	<nav class="flex-1 p-2 space-y-0.5 overflow-y-auto">
 		{#each nav as item}
 			{@const active = page.url.pathname === item.href || (item.href !== '/' && page.url.pathname.startsWith(item.href))}
-			<a
-				href={item.href}
-				class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors {active ? 'bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
+			<button
+				onclick={() => handleNav(item.href)}
+				class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors w-full text-left
+					{active ? 'bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
 			>
 				<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
 					<path stroke-linecap="round" stroke-linejoin="round" d={item.icon} />
 				</svg>
 				{item.label}
-			</a>
+			</button>
 		{/each}
 	</nav>
-	{#if mode === 'live'}
-		<div class="mx-2 mb-2 px-3 py-2 rounded-lg bg-[var(--accent-red)]/10 border border-[var(--accent-red)]/20">
-			<div class="flex items-center gap-2">
-				<span class="w-2 h-2 rounded-full bg-[var(--accent-red)] animate-pulse"></span>
-				<span class="text-xs font-medium text-[var(--accent-red)]">LIVE TRADING</span>
-			</div>
-			<p class="text-[10px] text-[var(--text-secondary)] mt-0.5">Real orders active</p>
-		</div>
-	{/if}
 
-	<!-- 내 입금 지갑 주소 -->
+	<!-- Wallets -->
 	<div class="mx-2 mb-2 px-3 py-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
 		<div class="flex items-center gap-1.5 mb-2">
 			<svg class="w-3.5 h-3.5 text-[var(--accent-green)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
 			</svg>
-			<span class="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">내 지갑</span>
+			<span class="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Wallets</span>
 		</div>
 
 		{#if walletAddresses?.hyperliquid}
@@ -87,7 +256,7 @@
 					class="flex items-center gap-1 w-full group cursor-pointer"
 					title={walletAddresses.hyperliquid.address}
 				>
-					<code class="text-[10px] font-mono text-[var(--text-primary)] bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded truncate flex-1 text-left group-hover:bg-[var(--bg-hover)] transition-colors">
+					<code class="text-[10px] font-mono text-[var(--text-primary)] bg-black/30 px-1.5 py-0.5 rounded truncate flex-1 text-left group-hover:bg-[var(--bg-hover)] transition-colors">
 						{truncateAddr(walletAddresses.hyperliquid.address)}
 					</code>
 					{#if copied === 'hl'}
@@ -107,7 +276,7 @@
 					class="flex items-center gap-1 w-full group cursor-pointer"
 					title={walletAddresses.coinbase.address}
 				>
-					<code class="text-[10px] font-mono text-[var(--text-primary)] bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded truncate flex-1 text-left group-hover:bg-[var(--bg-hover)] transition-colors">
+					<code class="text-[10px] font-mono text-[var(--text-primary)] bg-black/30 px-1.5 py-0.5 rounded truncate flex-1 text-left group-hover:bg-[var(--bg-hover)] transition-colors">
 						{truncateAddr(walletAddresses.coinbase.address)}
 					</code>
 					{#if copied === 'cb'}

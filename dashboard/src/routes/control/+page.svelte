@@ -153,7 +153,7 @@
 	<!-- Status Cards -->
 	<div class="grid grid-cols-2 md:grid-cols-4 gap-3">
 		<!-- Mode -->
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="box">
 			<p class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mb-2">Trading Mode</p>
 			<div class="flex gap-2">
 				<button onclick={() => switchMode('paper')} disabled={switchingMode || mode === 'paper'} class="flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer {mode === 'paper' ? 'bg-[var(--accent-yellow)]/15 border-[var(--accent-yellow)]/40 text-[var(--accent-yellow)]' : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-secondary)] hover:text-white'} disabled:opacity-60">PAPER</button>
@@ -162,7 +162,7 @@
 		</div>
 
 		<!-- Kill Switch -->
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="box">
 			<p class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mb-2">Kill Switch</p>
 			<div class="flex items-center gap-3">
 				<button onclick={toggleKillSwitch} disabled={togglingKs} aria-label="Toggle Kill Switch" class="relative w-12 h-6 rounded-full transition-colors cursor-pointer {killSwitch ? 'bg-[var(--accent-red)]' : 'bg-gray-600'}">
@@ -173,13 +173,13 @@
 		</div>
 
 		<!-- API Errors -->
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="box">
 			<p class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mb-2">API Errors</p>
 			<p class="text-xl font-bold {apiErrorCount > 0 ? 'text-[var(--accent-red)]' : 'text-[var(--accent-green)]'}">{apiErrorCount}</p>
 		</div>
 
 		<!-- Setup -->
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="box">
 			<p class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mb-2">Setup</p>
 			{#if setup.ok}
 				<span class="text-xs font-medium text-[var(--accent-green)] flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-[var(--accent-green)]"></span> All Clear</span>
@@ -191,9 +191,9 @@
 	</div>
 
 	<!-- Strategy Selection -->
-	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-		<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">전략 선택</h2>
-		<div class="grid grid-cols-3 gap-3">
+	<div class="box">
+		<h2 class="box-title mb-3">전략 선택</h2>
+		<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
 			{#each STRATEGIES as s}
 				<button
 					onclick={() => setStrategy(s.name)}
@@ -219,7 +219,7 @@
 	<!-- Runner + Monitor Control -->
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 		<!-- Runner -->
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="box">
 			<div class="flex items-center justify-between mb-3">
 				<div class="flex items-center gap-2">
 					<span class="w-2 h-2 rounded-full {runnerActive ? 'bg-[var(--accent-green)] animate-pulse' : 'bg-[var(--text-secondary)]'}"></span>
@@ -241,7 +241,7 @@
 		</div>
 
 		<!-- Monitor -->
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="box">
 			<div class="flex items-center justify-between mb-3">
 				<div class="flex items-center gap-2">
 					<span class="w-2 h-2 rounded-full {monitorStatus.state === 'running' ? 'bg-[var(--accent-green)] animate-pulse' : 'bg-[var(--text-secondary)]'}"></span>
@@ -261,10 +261,10 @@
 
 	<!-- Open Positions (청산 가능) -->
 	{#if hlPositions.length > 0}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="box">
 			<div class="flex items-center justify-between mb-3">
 				<div class="flex items-center gap-2">
-					<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Open Positions</h2>
+					<h2 class="box-title">Open Positions</h2>
 					<span class="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-blue)]/15 text-[var(--accent-blue)] font-medium">{hlPositions.length}건</span>
 				</div>
 				<button onclick={closeAllPositions} class="text-[10px] px-3 py-1.5 rounded-lg bg-[var(--accent-red)]/15 text-[var(--accent-red)] hover:bg-[var(--accent-red)]/25 cursor-pointer">전체 청산</button>
@@ -293,8 +293,8 @@
 	{/if}
 
 	<!-- Manual Execution -->
-	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-		<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">수동 실행</h2>
+	<div class="box">
+		<h2 class="box-title mb-3">수동 실행</h2>
 		<div class="grid grid-cols-3 md:grid-cols-6 gap-2">
 			{#each scripts as s}
 				<button onclick={() => runScript(s.id)} disabled={runningScript !== null} class="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg p-3 text-left hover:bg-[var(--bg-hover)] transition-all disabled:opacity-50 cursor-pointer relative">
@@ -308,9 +308,9 @@
 
 	<!-- Results -->
 	{#if lastResult}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="box">
 			<div class="flex items-center justify-between mb-2">
-				<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">실행 결과</h2>
+				<h2 class="box-title">실행 결과</h2>
 				<span class="px-2 py-0.5 rounded text-xs font-medium {lastResult.success ? 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]' : 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'}">{lastResult.success ? '성공' : '실패'}</span>
 			</div>
 			<pre class="bg-[var(--bg-primary)] rounded-lg p-3 text-[10px] font-mono overflow-x-auto max-h-64 text-[var(--text-secondary)]">{typeof lastResult.data === 'string' ? lastResult.data : JSON.stringify(lastResult.data, null, 2)}{#if lastResult.error}
@@ -319,8 +319,8 @@ Error: {lastResult.error}{/if}</pre>
 	{/if}
 
 	<!-- Environment Setup -->
-	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-		<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">환경 설정</h2>
+	<div class="box">
+		<h2 class="box-title mb-3">환경 설정</h2>
 		<div class="grid grid-cols-1 md:grid-cols-2 gap-2">
 			{#each setup.checks as check}
 				<div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-secondary)]">
@@ -341,8 +341,8 @@ Error: {lastResult.error}{/if}</pre>
 	</div>
 
 	<!-- Config -->
-	<details class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl">
-		<summary class="px-4 py-3 text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:text-white">config.yaml</summary>
+	<details class="box !p-0">
+		<summary class="px-4 py-3 box-title cursor-pointer hover:text-white">config.yaml</summary>
 		<div class="px-4 pb-4">
 			<pre class="bg-[var(--bg-primary)] rounded-lg p-3 text-[10px] font-mono overflow-x-auto max-h-64 text-[var(--text-secondary)]">{configYaml}</pre>
 		</div>

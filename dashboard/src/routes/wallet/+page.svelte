@@ -100,7 +100,7 @@
 
 	<!-- 실시간 잔고 -->
 	<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
+		<div class="box">
 			<div class="flex items-center justify-between mb-1">
 				<p class="text-[10px] text-[var(--accent-blue)] uppercase tracking-wider font-medium">Coinbase</p>
 				{#if liveBalances}<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></span>{/if}
@@ -110,7 +110,7 @@
 			</p>
 			<p class="text-[10px] text-[var(--text-secondary)]">Base Network</p>
 		</div>
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
+		<div class="box">
 			<div class="flex items-center justify-between mb-1">
 				<p class="text-[10px] text-[var(--accent-purple)] uppercase tracking-wider font-medium">HyperLiquid</p>
 				{#if liveBalances}<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse"></span>{/if}
@@ -120,7 +120,7 @@
 			</p>
 			<p class="text-[10px] text-[var(--text-secondary)]">Arbitrum</p>
 		</div>
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
+		<div class="box">
 			<p class="text-[10px] text-white uppercase tracking-wider font-medium mb-1">Total</p>
 			<p class="text-2xl font-bold text-white">
 				{liveBalances ? `$${liveBalances.total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : wallet.balance ? `$${Number(wallet.balance.total_balance).toFixed(2)}` : 'N/A'}
@@ -131,7 +131,7 @@
 
 	<!-- HL 상세 잔고 -->
 	{#if liveBalances?.hlDetail && (liveBalances.hlDetail.spot.length > 0 || liveBalances.hlDetail.perp > 0)}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+		<div class="box">
 			<h2 class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider font-semibold mb-2">HyperLiquid 상세</h2>
 			<div class="space-y-1">
 				{#if liveBalances.hlDetail.perp > 0}
@@ -145,7 +145,7 @@
 	{/if}
 
 	<!-- 입금 주소 + Arbitrum 자동 입금 -->
-	<div class="bg-[var(--bg-card)] border border-[var(--accent-green)]/30 rounded-xl p-4">
+	<div class="box !border-[var(--accent-green)]/30">
 		<div class="flex items-center gap-2 mb-3">
 			<svg class="w-4 h-4 text-[var(--accent-green)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
 			<h2 class="text-sm font-semibold uppercase tracking-wider">입금 주소</h2>
@@ -209,8 +209,8 @@
 
 	<!-- Balance History -->
 	{#if wallet.balanceHistory && wallet.balanceHistory.length > 0}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-			<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">잔고 히스토리</h2>
+		<div class="box">
+			<h2 class="box-title mb-3">잔고 히스토리</h2>
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">
 					<thead><tr class="text-[var(--text-secondary)] text-xs uppercase border-b border-[var(--border)]"><th class="text-left py-2 px-3">시간</th><th class="text-right py-2 px-3">Coinbase</th><th class="text-right py-2 px-3">HyperLiquid</th><th class="text-right py-2 px-3">Total</th></tr></thead>
@@ -230,8 +230,8 @@
 	{/if}
 
 	<!-- Transfers -->
-	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-		<h2 class="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">전송 히스토리</h2>
+	<div class="box">
+		<h2 class="box-title mb-3">전송 히스토리</h2>
 		{#if wallet.transfers && wallet.transfers.length > 0}
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">

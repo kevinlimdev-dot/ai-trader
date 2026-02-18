@@ -1,17 +1,27 @@
 <script lang="ts">
 	import '../app.css';
 	import Sidebar from '$lib/components/Sidebar.svelte';
-	import SetupBanner from '$lib/components/SetupBanner.svelte';
 	import type { SetupSummary, WalletAddresses } from '$lib/types';
+	import { page } from '$app/state';
 
 	let { children, data } = $props();
 	let setup: SetupSummary = $state(data.setup as any);
 	let mode: string = $state(data.mode);
 	let walletAddresses: WalletAddresses = $state(data.walletAddresses as any);
-	let showSetupDetail = $state(false);
 	let switchingMode = $state(false);
+	let sidebarOpen = $state(false);
 
-	// Poll setup status + mode + wallet addresses every 10s
+	const pageTitle = $derived(() => {
+		const p = page.url.pathname;
+		if (p === '/') return 'Dashboard';
+		if (p.startsWith('/positions')) return 'Positions';
+		if (p.startsWith('/trades')) return 'Trades';
+		if (p.startsWith('/signals')) return 'Signals';
+		if (p.startsWith('/wallet')) return 'Wallet';
+		if (p.startsWith('/control')) return 'Control';
+		return 'AI Trader';
+	});
+
 	$effect(() => {
 		const interval = setInterval(async () => {
 			try {
@@ -27,6 +37,11 @@
 			} catch { /* ignore */ }
 		}, 10000);
 		return () => clearInterval(interval);
+	});
+
+	$effect(() => {
+		page.url.pathname;
+		sidebarOpen = false;
 	});
 
 	async function toggleMode() {
@@ -51,7 +66,6 @@
 			const result = await res.json();
 			if (result.success) {
 				mode = result.mode;
-				// Refresh setup (live mode may trigger new errors)
 				const setupRes = await fetch('/api/setup');
 				setup = await setupRes.json();
 			}
@@ -60,48 +74,40 @@
 	}
 </script>
 
-<div class="flex min-h-screen">
-	<Sidebar {mode} {walletAddresses} />
-	<div class="flex-1 flex flex-col overflow-auto">
-		<!-- Setup Warning Banner -->
-		{#if !setup.ok || setup.warnings > 0}
-			<SetupBanner {setup} bind:showDetail={showSetupDetail} />
-		{/if}
+<div class="flex min-h-screen bg-[var(--bg-primary)]">
+	<Sidebar {mode} {walletAddresses} {setup} {switchingMode} open={sidebarOpen} onclose={() => sidebarOpen = false} ontogglemode={toggleMode} />
 
-		<!-- Mode switcher bar -->
-		<div class="flex items-center justify-between px-6 py-2.5 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
-			<div class="flex items-center gap-3 text-sm">
-				<span class="text-[var(--text-secondary)]">Trading Mode:</span>
+	<div class="flex-1 flex flex-col min-w-0">
+		<!-- Mobile top bar -->
+		<div class="flex lg:hidden items-center justify-between px-4 py-2.5 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
+			<div class="flex items-center gap-3">
 				<button
-					onclick={toggleMode}
-					disabled={switchingMode}
-					class="relative flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all cursor-pointer
-						{mode === 'live'
-							? 'bg-[var(--accent-red)]/10 border-[var(--accent-red)]/40 text-[var(--accent-red)]'
-							: 'bg-[var(--accent-yellow)]/10 border-[var(--accent-yellow)]/40 text-[var(--accent-yellow)]'
-						}
-						hover:opacity-80 disabled:opacity-50"
+					class="text-[var(--text-secondary)] hover:text-white p-1 -ml-1"
+					onclick={() => sidebarOpen = true}
+					aria-label="Open menu"
 				>
-					<span class="w-2 h-2 rounded-full {mode === 'live' ? 'bg-[var(--accent-red)] animate-pulse' : 'bg-[var(--accent-yellow)]'}"></span>
-					<span class="font-semibold text-xs uppercase">{switchingMode ? 'Switching...' : mode}</span>
+					<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+					</svg>
 				</button>
-				<span class="text-xs text-[var(--text-secondary)]">
-					{mode === 'live' ? 'Real trades with real funds' : 'Simulated trades, no real orders'}
-				</span>
+				<span class="text-sm font-semibold text-white">{pageTitle()}</span>
 			</div>
-			<div class="flex items-center gap-2">
-				{#if mode === 'live'}
-					<span class="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-[var(--accent-red)]/10 text-[var(--accent-red)] border border-[var(--accent-red)]/30">
-						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-						</svg>
-						LIVE
-					</span>
-				{/if}
-			</div>
+			<button
+				onclick={toggleMode}
+				disabled={switchingMode}
+				class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold uppercase cursor-pointer transition-all
+					disabled:opacity-50 disabled:cursor-not-allowed
+					{mode === 'live'
+						? 'bg-[var(--accent-red)]/15 border-[var(--accent-red)]/40 text-[var(--accent-red)]'
+						: 'bg-[var(--accent-yellow)]/15 border-[var(--accent-yellow)]/40 text-[var(--accent-yellow)]'
+					}"
+			>
+				<span class="w-1.5 h-1.5 rounded-full {mode === 'live' ? 'bg-[var(--accent-red)] animate-pulse' : 'bg-[var(--accent-yellow)]'}"></span>
+				{switchingMode ? '...' : mode}
+			</button>
 		</div>
 
-		<main class="flex-1 p-6">
+		<main class="flex-1 p-4 lg:p-6">
 			{@render children()}
 		</main>
 	</div>

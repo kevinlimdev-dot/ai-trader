@@ -257,7 +257,7 @@
 					</td>
 				</tr>
 			{:else}
-				<tr><td colspan={showCompact ? (hasLivePrices ? 8 : 5) : (hasLivePrices ? 10 : 7)} class="py-8 text-center text-[var(--text-secondary)]">No trades</td></tr>
+				<tr><td colspan={showCompact ? (hasLivePrices ? 8 : 5) : (hasLivePrices ? 10 : 7)} class="text-center"><div class="flex items-center justify-center min-h-[120px]"><span class="text-xs text-[var(--text-secondary)]">거래 내역 없음</span></div></td></tr>
 			{/each}
 		</tbody>
 	</table>
