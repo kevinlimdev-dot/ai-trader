@@ -256,6 +256,130 @@ ${summaryJson}`;
 	}
 }
 
+// ─── AI Smart Take-Profit ───
+
+async function runSmartTakeProfit(steps: Record<string, StepResult>): Promise<void> {
+	log('  [smart-tp] 수익 포지션 AI 익절 분석 시작...');
+	const tpStart = Date.now();
+
+	// smart-tp.ts 실행하여 수익 포지션 요약 획득
+	try {
+		const proc = Bun.spawn(
+			['bun', 'run', resolve(PROJECT_ROOT, 'skills/trader/scripts/smart-tp.ts')],
+			{ cwd: PROJECT_ROOT, stdout: 'pipe', stderr: 'pipe', env: { ...process.env } }
+		);
+		const timer = setTimeout(() => proc.kill(), 30_000);
+		const exitCode = await proc.exited;
+		clearTimeout(timer);
+		const stdout = await new Response(proc.stdout).text();
+
+		if (exitCode !== 0 || !stdout.trim()) {
+			log('  [smart-tp] 분석 스크립트 실패 — 건너뜀');
+			steps['smart-tp'] = { success: false, durationMs: Date.now() - tpStart, error: 'script failed' };
+			return;
+		}
+
+		// stdout에 로그 라인이 섞일 수 있으므로, 줄 시작의 JSON 객체만 추출
+		const lines = stdout.split('\n');
+		const jsonLineIdx = lines.findIndex(l => l.trimStart().startsWith('{') || l.trimStart().startsWith('"'));
+		const jsonStr = jsonLineIdx >= 0 ? lines.slice(jsonLineIdx).join('\n') : stdout.trim();
+		let data: any;
+		try {
+			data = JSON.parse(jsonStr);
+		} catch {
+			log('  [smart-tp] 출력 JSON 파싱 실패 — 건너뜀');
+			steps['smart-tp'] = { success: false, durationMs: Date.now() - tpStart, error: 'JSON parse failed' };
+			return;
+		}
+
+		// 수익 포지션이 없거나 _instruction이 없으면 AI 호출 불필요
+		if (!data.positions || data.positions.length === 0) {
+			log(`  [smart-tp] ${data.message || '수익 포지션 없음'} — 건너뜀`);
+			steps['smart-tp'] = { success: true, durationMs: Date.now() - tpStart };
+			return;
+		}
+
+		// OpenClaw AI에게 익절 판단 요청
+		const sessionId = `smart-tp-${Date.now()}`;
+		const prompt = `아래는 현재 보유 중인 수익 포지션과 시장 지표 데이터다. 각 포지션에 대해 지금 수익 확정할지 판단하여 JSON 배열로만 출력하라.
+
+출력 형식 (이것만 출력, 다른 텍스트 금지):
+[{"symbol":"BTC","action":"CLOSE","reason":"근거"},{"symbol":"ETH","action":"HOLD","reason":"근거"}]
+
+action은 "CLOSE" 또는 "HOLD"만 허용.
+수익이 peak에서 하락 중이거나, 반대 시그널이 나오거나, 모멘텀이 약해지면 CLOSE.
+수익이 안정적으로 증가하고 모멘텀이 유지되면 HOLD.
+
+데이터:
+${stdout.trim()}`;
+
+		const aiResult = await runOpenClawAgent(prompt, {
+			cwd: PROJECT_ROOT,
+			timeoutMs: 60_000,
+			agentId: 'main',
+			sessionId,
+		});
+
+		if (!aiResult.success) {
+			log('  [smart-tp] AI 판단 실패 — 건너뜀');
+			steps['smart-tp'] = { success: false, durationMs: Date.now() - tpStart, error: aiResult.error };
+			return;
+		}
+
+		// AI 출력에서 JSON 배열 추출
+		const jsonMatch = aiResult.output.trim().match(/\[[\s\S]*?\]/);
+		if (!jsonMatch) {
+			log('  [smart-tp] AI 출력에서 JSON 미발견 — 건너뜀');
+			steps['smart-tp'] = { success: true, durationMs: Date.now() - tpStart };
+			return;
+		}
+
+		const aiDecisions: { symbol: string; action: string; reason: string }[] = JSON.parse(jsonMatch[0]);
+		const closeDecisions = aiDecisions.filter(d => d.action === 'CLOSE');
+
+		if (closeDecisions.length === 0) {
+			log('  [smart-tp] AI: 모든 포지션 HOLD 유지');
+			steps['smart-tp'] = { success: true, durationMs: Date.now() - tpStart };
+			return;
+		}
+
+		// AI가 CLOSE로 판단한 포지션 청산
+		for (const decision of closeDecisions) {
+			// smart-tp 출력에서 해당 코인의 side 정보 가져오기
+			const posInfo = data.positions?.find((p: any) => p.symbol === decision.symbol);
+			const side = posInfo?.side || 'LONG';
+
+			log(`  [smart-tp] 🎯 ${decision.symbol} (${side}) AI 익절 결정: ${decision.reason}`);
+			try {
+				const closeProc = Bun.spawn(
+					['bun', 'run', resolve(PROJECT_ROOT, 'skills/trader/scripts/execute-trade.ts'),
+						'--action', 'close-position', '--coin', decision.symbol, '--side', side],
+					{ cwd: PROJECT_ROOT, stdout: 'pipe', stderr: 'pipe', env: { ...process.env } }
+				);
+				const closeTimer = setTimeout(() => closeProc.kill(), 30_000);
+				const closeExit = await closeProc.exited;
+				clearTimeout(closeTimer);
+
+				if (closeExit === 0) {
+					log(`  [smart-tp] ✅ ${decision.symbol} 익절 완료`);
+				} else {
+					const closeErr = await new Response(closeProc.stderr).text();
+					log(`  [smart-tp] ❌ ${decision.symbol} 청산 실패: ${closeErr.slice(0, 200)}`);
+				}
+			} catch (err) {
+				log(`  [smart-tp] ❌ ${decision.symbol} 청산 에러: ${err instanceof Error ? err.message : String(err)}`);
+			}
+		}
+
+		log(`  [smart-tp] 완료: ${closeDecisions.length}건 익절, ${aiDecisions.length - closeDecisions.length}건 유지`);
+		steps['smart-tp'] = { success: true, durationMs: Date.now() - tpStart };
+
+	} catch (err) {
+		log(`  [smart-tp] 에러: ${err instanceof Error ? err.message : String(err)}`);
+		steps['smart-tp'] = { success: false, durationMs: Date.now() - tpStart, error: err instanceof Error ? err.message : String(err) };
+	}
+}
+
 // ─── Pipeline Cycle (하이브리드) ───
 
 // 1-3단계: 데이터 수집 스크립트 (Runner 직접 실행)
@@ -379,6 +503,11 @@ async function runCycle(pauseBetweenSec: number): Promise<CycleResult> {
 		const cmd = checkControlFile();
 		if (cmd === 'stop') break;
 		if (pauseBetweenSec > 0 && step !== EXEC_STEPS[EXEC_STEPS.length - 1]) await sleep(pauseBetweenSec * 1000);
+	}
+
+	// ─── 8단계: AI 스마트 익절 (수익 포지션에 대해 AI가 익절 여부 판단) ───
+	if (useOpenClaw) {
+		await runSmartTakeProfit(steps);
 	}
 
 	return {

@@ -174,7 +174,7 @@ async function checkPositions(hl: HyperliquidService, risk: RiskManager, tradePr
 			}
 		}
 
-		// Trailing Stop — 수익 방향(pnlPct > 0)에서만 동작
+		// Progressive Trailing Stop — 수익이 커질수록 추적 폭이 좁아짐
 		if (!exitReason && pnlPct > 0) {
 			const isActivated = trade.trailing_activated === 1 || risk.shouldActivateTrailingStop(pnlPct);
 
@@ -183,11 +183,13 @@ async function checkPositions(hl: HyperliquidService, risk: RiskManager, tradePr
 				logger.info(`${trade.symbol} 트레일링 스탑 활성화`, { pnl_pct: pnlPct.toFixed(2) });
 			}
 
-			if (isActivated && risk.shouldTriggerTrailingStop(pnlPct, newPeak)) {
+			if (isActivated && risk.shouldTriggerProgressiveTrailing(pnlPct, newPeak)) {
+				const trailPct = risk.getProgressiveTrailPct(newPeak);
 				exitReason = "trailing_stop";
-				logger.info(`${trade.symbol} 트레일링 스탑 트리거`, {
+				logger.info(`${trade.symbol} 프로그레시브 트레일링 트리거`, {
 					peak: newPeak.toFixed(2),
-					current: absPnlPct.toFixed(2),
+					current: pnlPct.toFixed(2),
+					trail_pct: trailPct.toFixed(2),
 				});
 			}
 		}

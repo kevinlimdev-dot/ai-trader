@@ -4,6 +4,7 @@ export type ExitReason =
   | "take_profit"
   | "stop_loss"
   | "trailing_stop"
+  | "smart_tp"
   | "manual"
   | "manual_close"
   | "signal_reverse"

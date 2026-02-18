@@ -220,7 +220,15 @@ rm /Users/kevin/Documents/GitHub/ai-trader/data/KILL_SWITCH
 cd /Users/kevin/Documents/GitHub/ai-trader && bun run skills/trader/scripts/execute-trade.ts --action monitor
 ```
 
-열린 포지션의 SL/TP/트레일링 스탑을 체크하고 청산 조건을 확인합니다.
+열린 포지션의 SL/TP/프로그레시브 트레일링 스탑을 체크하고 청산 조건을 확인합니다.
+
+### AI 스마트 익절
+
+```bash
+cd /Users/kevin/Documents/GitHub/ai-trader && bun run skills/trader/scripts/smart-tp.ts
+```
+
+수익 중인 포지션의 시장 지표를 분석하여 AI가 익절 여부를 판단합니다. Runner 사이클마다 자동 실행됩니다.
 
 ---
 

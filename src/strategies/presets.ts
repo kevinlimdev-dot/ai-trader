@@ -54,6 +54,13 @@ export interface TradeOverrides {
     activation_pct: number;
     trail_pct: number;
   };
+  progressive_trailing: {
+    tiers: { profit_pct: number; trail_pct: number }[];
+  };
+  smart_tp: {
+    min_profit_pct: number;
+    check_interval_sec: number;
+  };
   signal_max_age_seconds: number;
 }
 
@@ -91,6 +98,15 @@ const conservative: StrategyPreset = {
     stopLoss: { atr_multiplier: 2.0 },
     takeProfit: { atr_multiplier: 5.0 },
     trailing_stop: { activation_pct: 1.5, trail_pct: 0.6 },
+    progressive_trailing: {
+      tiers: [
+        { profit_pct: 1.5, trail_pct: 0.6 },
+        { profit_pct: 3.0, trail_pct: 0.4 },
+        { profit_pct: 5.0, trail_pct: 0.25 },
+        { profit_pct: 8.0, trail_pct: 0.15 },
+      ],
+    },
+    smart_tp: { min_profit_pct: 1.0, check_interval_sec: 60 },
     signal_max_age_seconds: 120,
   },
 };
@@ -121,6 +137,15 @@ const balanced: StrategyPreset = {
     stopLoss: { atr_multiplier: 1.5 },
     takeProfit: { atr_multiplier: 3.0 },
     trailing_stop: { activation_pct: 1.0, trail_pct: 0.5 },
+    progressive_trailing: {
+      tiers: [
+        { profit_pct: 1.0, trail_pct: 0.5 },
+        { profit_pct: 2.0, trail_pct: 0.35 },
+        { profit_pct: 4.0, trail_pct: 0.2 },
+        { profit_pct: 7.0, trail_pct: 0.12 },
+      ],
+    },
+    smart_tp: { min_profit_pct: 0.8, check_interval_sec: 60 },
     signal_max_age_seconds: 60,
   },
 };
@@ -151,6 +176,15 @@ const aggressive: StrategyPreset = {
     stopLoss: { atr_multiplier: 1.0 },
     takeProfit: { atr_multiplier: 2.0 },
     trailing_stop: { activation_pct: 0.7, trail_pct: 0.3 },
+    progressive_trailing: {
+      tiers: [
+        { profit_pct: 0.7, trail_pct: 0.3 },
+        { profit_pct: 1.5, trail_pct: 0.2 },
+        { profit_pct: 3.0, trail_pct: 0.12 },
+        { profit_pct: 5.0, trail_pct: 0.08 },
+      ],
+    },
+    smart_tp: { min_profit_pct: 0.5, check_interval_sec: 45 },
     signal_max_age_seconds: 45,
   },
 };

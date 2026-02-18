@@ -8,6 +8,6 @@ export default defineConfig({
 		host: '0.0.0.0',
 	},
 	ssr: {
-		external: ['better-sqlite3', '@nktkas/hyperliquid', 'viem', 'viem/accounts'],
+		external: ['bun:sqlite', '@nktkas/hyperliquid', 'viem', 'viem/accounts'],
 	},
 });
