@@ -1,35 +1,23 @@
 {
-  "collected_at": "2026-02-17T10:25:41.866Z",
+  "collected_at": "2026-02-18T08:23:59.548Z",
   "count": 31,
   "sentiment": [
     {
       "symbol": "BTC",
       "binance_pair": "BTCUSDT",
       "hl": {
-        "funding": 0.0000040205,
-        "openInterest": 18036.69556,
-        "premium": -0.0005742388,
-        "oraclePx": 67916,
-        "markPx": 67877,
-        "dayNtlVlm": 1693341661.5686102,
-        "impactBid": 67876,
-        "impactAsk": 67877
+        "funding": 0.0000119199,
+        "openInterest": 18452.07354,
+        "premium": -0.0004099321,
+        "oraclePx": 68304,
+        "markPx": 68274,
+        "dayNtlVlm": 2126220116.5724013,
+        "impactBid": 68275,
+        "impactAsk": 68276
       },
       "binance": {
-        "openInterest": 76817.382,
+        "openInterest": 79750.275,
         "fundingHistory": [
-          {
-            "rate": -0.00001068,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0.00004664,
-            "time": 1771142400002
-          },
-          {
-            "rate": -0.00002371,
-            "time": 1771171200000
-          },
           {
             "rate": 0.00002659,
             "time": 1771200000001
@@ -49,14 +37,26 @@
           {
             "rate": 0.00002672,
             "time": 1771315200001
+          },
+          {
+            "rate": 0.00005077,
+            "time": 1771344000002
+          },
+          {
+            "rate": 0.00003215,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00000141,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 1.956,
-          "trend": "stable"
+          "latest": 2.076,
+          "trend": "decreasing"
         },
         "topTraderRatio": {
-          "latest": 1.3138,
+          "latest": 1.3925,
           "trend": "stable"
         },
         "takerVolume": null
@@ -64,7 +64,7 @@
       "sentiment_summary": {
         "funding_direction": "neutral",
         "oi_level": "moderate",
-        "crowd_bias": "long_heavy",
+        "crowd_bias": "extreme_long",
         "smart_money_bias": "long_bias",
         "taker_pressure": "unknown",
         "overall": "mixed"
@@ -74,30 +74,18 @@
       "symbol": "ETH",
       "binance_pair": "ETHUSDT",
       "hl": {
-        "funding": 0.0000012485,
-        "openInterest": 493999.0383999999,
-        "premium": -0.0005083884,
-        "oraclePx": 1967,
-        "markPx": 1965.9,
-        "dayNtlVlm": 912958417.3029096,
-        "impactBid": 1965.9,
-        "impactAsk": 1966
+        "funding": 0.0000125,
+        "openInterest": 510743.0357999999,
+        "premium": -0.000345355,
+        "oraclePx": 2026.9,
+        "markPx": 2026.2,
+        "dayNtlVlm": 1168830444.8520489,
+        "impactBid": 2026.1,
+        "impactAsk": 2026.2
       },
       "binance": {
-        "openInterest": 1764545.266,
+        "openInterest": 1820086.71,
         "fundingHistory": [
-          {
-            "rate": -0.00006367,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0.00006204,
-            "time": 1771142400002
-          },
-          {
-            "rate": -0.0000755,
-            "time": 1771171200000
-          },
           {
             "rate": -0.00005314,
             "time": 1771200000001
@@ -117,14 +105,26 @@
           {
             "rate": 0.00000843,
             "time": 1771315200001
+          },
+          {
+            "rate": -0.00004733,
+            "time": 1771344000002
+          },
+          {
+            "rate": 0.00001121,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00003783,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 2.5448,
-          "trend": "stable"
+          "latest": 2.0609,
+          "trend": "decreasing"
         },
         "topTraderRatio": {
-          "latest": 1.722,
+          "latest": 1.5532,
           "trend": "stable"
         },
         "takerVolume": null
@@ -142,30 +142,18 @@
       "symbol": "SOL",
       "binance_pair": "SOLUSDT",
       "hl": {
-        "funding": -0.0000187593,
-        "openInterest": 3266309.3000000007,
-        "premium": -0.0005042214,
-        "oraclePx": 85.28,
-        "markPx": 85.228,
-        "dayNtlVlm": 280792086.0937502,
-        "impactBid": 85.2207,
-        "impactAsk": 85.237
+        "funding": 0.0000043032,
+        "openInterest": 3482449.3600000003,
+        "premium": -0.0005928139,
+        "oraclePx": 85.693,
+        "markPx": 85.641,
+        "dayNtlVlm": 207988754.42918,
+        "impactBid": 85.6394,
+        "impactAsk": 85.6422
       },
       "binance": {
-        "openInterest": 9416770.5,
+        "openInterest": 9234088.77,
         "fundingHistory": [
-          {
-            "rate": -0.00017847,
-            "time": 1771113600000
-          },
-          {
-            "rate": -0.0000101,
-            "time": 1771142400002
-          },
-          {
-            "rate": 0.00005339,
-            "time": 1771171200000
-          },
           {
             "rate": -0.00004817,
             "time": 1771200000001
@@ -185,14 +173,26 @@
           {
             "rate": -0.00005851,
             "time": 1771315200001
+          },
+          {
+            "rate": -0.00012454,
+            "time": 1771344000002
+          },
+          {
+            "rate": -0.00009696,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00003984,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 2.5575,
+          "latest": 2.7202,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 1.1267,
+          "latest": 1.2513,
           "trend": "stable"
         },
         "takerVolume": null
@@ -210,30 +210,18 @@
       "symbol": "XRP",
       "binance_pair": "XRPUSDT",
       "hl": {
-        "funding": -0.0000130019,
-        "openInterest": 65555640,
-        "premium": -0.0004813312,
-        "oraclePx": 1.4543,
-        "markPx": 1.4536,
-        "dayNtlVlm": 76697421.04680002,
-        "impactBid": 1.4535,
-        "impactAsk": 1.4536
+        "funding": 0.0000012069,
+        "openInterest": 64404946,
+        "premium": -0.0005372733,
+        "oraclePx": 1.489,
+        "markPx": 1.4882,
+        "dayNtlVlm": 44098282.447200045,
+        "impactBid": 1.4881,
+        "impactAsk": 1.4882
       },
       "binance": {
-        "openInterest": 262002168.3,
+        "openInterest": 259455511.5,
         "fundingHistory": [
-          {
-            "rate": -0.00015613,
-            "time": 1771113600000
-          },
-          {
-            "rate": -0.00017162,
-            "time": 1771142400002
-          },
-          {
-            "rate": 0.00003244,
-            "time": 1771171200000
-          },
           {
             "rate": -0.00010395,
             "time": 1771200000001
@@ -253,21 +241,33 @@
           {
             "rate": -0.00016961,
             "time": 1771315200001
+          },
+          {
+            "rate": 0.00001898,
+            "time": 1771344000002
+          },
+          {
+            "rate": 7.8e-7,
+            "time": 1771372800000
+          },
+          {
+            "rate": 0.0000225,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 2.3979,
+          "latest": 2.2873,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 0.9669,
+          "latest": 0.9067,
           "trend": "stable"
         },
         "takerVolume": null
       },
       "sentiment_summary": {
         "funding_direction": "neutral",
-        "oi_level": "moderate",
+        "oi_level": "high",
         "crowd_bias": "extreme_long",
         "smart_money_bias": "neutral",
         "taker_pressure": "unknown",
@@ -279,29 +279,17 @@
       "binance_pair": "DOGEUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 282445334,
-        "premium": -0.0003951568,
-        "oraclePx": 0.098695,
-        "markPx": 0.098656,
-        "dayNtlVlm": 13442475.861151999,
-        "impactBid": 0.098649,
-        "impactAsk": 0.098656
+        "openInterest": 295078332,
+        "premium": -0.0000984058,
+        "oraclePx": 0.10162,
+        "markPx": 0.10159,
+        "dayNtlVlm": 13357119.703907005,
+        "impactBid": 0.101579,
+        "impactAsk": 0.10161
       },
       "binance": {
-        "openInterest": 1715384450,
+        "openInterest": 1639802540,
         "fundingHistory": [
-          {
-            "rate": 0.0000785,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0.00001861,
-            "time": 1771142400002
-          },
-          {
-            "rate": 0.00008451,
-            "time": 1771171200000
-          },
           {
             "rate": -0.00007155,
             "time": 1771200000001
@@ -321,14 +309,26 @@
           {
             "rate": -0.00003879,
             "time": 1771315200001
+          },
+          {
+            "rate": 0.00000771,
+            "time": 1771344000002
+          },
+          {
+            "rate": -0.00007484,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00008343,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 2.4965,
+          "latest": 2.5575,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 1.8474,
+          "latest": 1.546,
           "trend": "stable"
         },
         "takerVolume": null
@@ -346,30 +346,18 @@
       "symbol": "kPEPE",
       "binance_pair": "1000PEPEUSDT",
       "hl": {
-        "funding": -0.0000033714,
-        "openInterest": 3150899674,
-        "premium": -0.0002326664,
-        "oraclePx": 0.004298,
-        "markPx": 0.004295,
-        "dayNtlVlm": 15308012.221036995,
-        "impactBid": 0.004295,
-        "impactAsk": 0.004297
+        "funding": 0.0000125,
+        "openInterest": 3487024542,
+        "premium": -0.0002269117,
+        "oraclePx": 0.004407,
+        "markPx": 0.004405,
+        "dayNtlVlm": 11338901.618593007,
+        "impactBid": 0.004405,
+        "impactAsk": 0.004406
       },
       "binance": {
-        "openInterest": 18201548851,
+        "openInterest": 18041651147,
         "fundingHistory": [
-          {
-            "rate": 0.0001,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0.0001,
-            "time": 1771142400002
-          },
-          {
-            "rate": 0.0001,
-            "time": 1771171200000
-          },
           {
             "rate": 0.0001,
             "time": 1771200000001
@@ -389,14 +377,26 @@
           {
             "rate": -0.00004913,
             "time": 1771315200001
+          },
+          {
+            "rate": 0.0001,
+            "time": 1771344000002
+          },
+          {
+            "rate": 0.00007919,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00012017,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 2.0675,
+          "latest": 2.0423,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 1.4938,
+          "latest": 1.5623,
           "trend": "stable"
         },
         "takerVolume": null
@@ -415,29 +415,17 @@
       "binance_pair": "ZECUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 306752.4,
-        "premium": -0.0001952644,
-        "oraclePx": 284.23,
-        "markPx": 284.18,
-        "dayNtlVlm": 63829051.74730001,
-        "impactBid": 284.1071,
-        "impactAsk": 284.1745
+        "openInterest": 341391.8400000001,
+        "premium": 0,
+        "oraclePx": 291.32,
+        "markPx": 291.35,
+        "dayNtlVlm": 112032648.18699998,
+        "impactBid": 291.3111,
+        "impactAsk": 291.4271
       },
       "binance": {
-        "openInterest": 447033.88,
+        "openInterest": 489309.18,
         "fundingHistory": [
-          {
-            "rate": -0.00019345,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0.00001569,
-            "time": 1771142400002
-          },
-          {
-            "rate": -0.00002743,
-            "time": 1771171200000
-          },
           {
             "rate": -0.000062,
             "time": 1771200000001
@@ -457,14 +445,26 @@
           {
             "rate": 0.00001017,
             "time": 1771315200001
+          },
+          {
+            "rate": 9.3e-7,
+            "time": 1771344000002
+          },
+          {
+            "rate": 0.00001472,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00001513,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 0.981,
+          "latest": 0.9701,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 1.473,
+          "latest": 1.5504,
           "trend": "stable"
         },
         "takerVolume": null
@@ -482,30 +482,18 @@
       "symbol": "BNB",
       "binance_pair": "BNBUSDT",
       "hl": {
-        "funding": 0.0000125,
-        "openInterest": 44218.748,
-        "premium": -0.0003810049,
-        "oraclePx": 616.79,
-        "markPx": 616.51,
-        "dayNtlVlm": 7401703.775999999,
-        "impactBid": 616.411,
-        "impactAsk": 616.555
+        "funding": -9.313e-7,
+        "openInterest": 40591.904,
+        "premium": -0.000532777,
+        "oraclePx": 623.15,
+        "markPx": 622.73,
+        "dayNtlVlm": 5256614.250990001,
+        "impactBid": 622.607,
+        "impactAsk": 622.818
       },
       "binance": {
-        "openInterest": 501025.33,
+        "openInterest": 500230.07,
         "fundingHistory": [
-          {
-            "rate": 0,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0,
-            "time": 1771142400002
-          },
-          {
-            "rate": 0,
-            "time": 1771171200000
-          },
           {
             "rate": 0,
             "time": 1771200000001
@@ -525,14 +513,26 @@
           {
             "rate": 0,
             "time": 1771315200001
+          },
+          {
+            "rate": 0,
+            "time": 1771344000002
+          },
+          {
+            "rate": 0,
+            "time": 1771372800000
+          },
+          {
+            "rate": 0,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 2.4819,
+          "latest": 2.4795,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 0.9678,
+          "latest": 0.8966,
           "trend": "stable"
         },
         "takerVolume": null
@@ -551,41 +551,17 @@
       "binance_pair": "HYPEUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 22785300.080000006,
-        "premium": 0.0002258935,
-        "oraclePx": 29.66,
-        "markPx": 29.674,
-        "dayNtlVlm": 157623828.56495985,
-        "impactBid": 29.6667,
-        "impactAsk": 29.6682
+        "openInterest": 22721816.720000006,
+        "premium": 0,
+        "oraclePx": 29.662,
+        "markPx": 29.661,
+        "dayNtlVlm": 143756263.36138996,
+        "impactBid": 29.6565,
+        "impactAsk": 29.6638
       },
       "binance": {
-        "openInterest": 5442860.03,
+        "openInterest": 5545468.19,
         "fundingHistory": [
-          {
-            "rate": -0.00001275,
-            "time": 1771214400004
-          },
-          {
-            "rate": -0.00000743,
-            "time": 1771228800003
-          },
-          {
-            "rate": -0.00000897,
-            "time": 1771243200000
-          },
-          {
-            "rate": -0.00003187,
-            "time": 1771257600000
-          },
-          {
-            "rate": 0.00001702,
-            "time": 1771272000009
-          },
-          {
-            "rate": 0.00005,
-            "time": 1771286400008
-          },
           {
             "rate": 0.00005,
             "time": 1771300800003
@@ -593,14 +569,38 @@
           {
             "rate": 0.00005,
             "time": 1771315200001
+          },
+          {
+            "rate": 0.00005,
+            "time": 1771329600000
+          },
+          {
+            "rate": 0.00005,
+            "time": 1771344000002
+          },
+          {
+            "rate": 0.00005,
+            "time": 1771358400002
+          },
+          {
+            "rate": 0.00005,
+            "time": 1771372800000
+          },
+          {
+            "rate": 0.00005,
+            "time": 1771387200000
+          },
+          {
+            "rate": 0.00005,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 1.0028,
-          "trend": "stable"
+          "latest": 0.9069,
+          "trend": "decreasing"
         },
         "topTraderRatio": {
-          "latest": 1.9007,
+          "latest": 1.8577,
           "trend": "stable"
         },
         "takerVolume": null
@@ -618,30 +618,18 @@
       "symbol": "SUI",
       "binance_pair": "SUIUSDT",
       "hl": {
-        "funding": 0.0000125,
-        "openInterest": 13060037,
-        "premium": -0.0002699616,
-        "oraclePx": 0.9631,
-        "markPx": 0.96273,
-        "dayNtlVlm": 10032608.304688,
-        "impactBid": 0.96249,
-        "impactAsk": 0.96284
+        "funding": 0.0000042879,
+        "openInterest": 13060489.4,
+        "premium": -0.000519507,
+        "oraclePx": 0.9817,
+        "markPx": 0.98116,
+        "dayNtlVlm": 9539355.436958,
+        "impactBid": 0.98094,
+        "impactAsk": 0.98119
       },
       "binance": {
-        "openInterest": 95866654.4,
+        "openInterest": 97272445.6,
         "fundingHistory": [
-          {
-            "rate": 0.0000505,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0.000003,
-            "time": 1771142400002
-          },
-          {
-            "rate": -0.00000258,
-            "time": 1771171200000
-          },
           {
             "rate": -0.00002129,
             "time": 1771200000001
@@ -661,14 +649,26 @@
           {
             "rate": 0.00006632,
             "time": 1771315200001
+          },
+          {
+            "rate": 0.00001027,
+            "time": 1771344000002
+          },
+          {
+            "rate": -0.00000865,
+            "time": 1771372800000
+          },
+          {
+            "rate": 0.0000306,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 1.7278,
+          "latest": 1.7042,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 1.5082,
+          "latest": 1.436,
           "trend": "stable"
         },
         "takerVolume": null
@@ -686,30 +686,18 @@
       "symbol": "ADA",
       "binance_pair": "ADAUSDT",
       "hl": {
-        "funding": -0.0000329236,
-        "openInterest": 55561550,
-        "premium": -0.0008774746,
-        "oraclePx": 0.28035,
-        "markPx": 0.2801,
-        "dayNtlVlm": 3675597.7357100006,
-        "impactBid": 0.279982,
-        "impactAsk": 0.280104
+        "funding": 0.000006435,
+        "openInterest": 55498838,
+        "premium": -0.0004238179,
+        "oraclePx": 0.2855,
+        "markPx": 0.2853,
+        "dayNtlVlm": 3207422.548799999,
+        "impactBid": 0.285261,
+        "impactAsk": 0.285379
       },
       "binance": {
-        "openInterest": 266102884,
+        "openInterest": 255935775,
         "fundingHistory": [
-          {
-            "rate": 0.00006502,
-            "time": 1771113600000
-          },
-          {
-            "rate": -0.00008689,
-            "time": 1771142400002
-          },
-          {
-            "rate": 0.000069,
-            "time": 1771171200000
-          },
           {
             "rate": -0.00004495,
             "time": 1771200000001
@@ -729,14 +717,26 @@
           {
             "rate": -0.00007531,
             "time": 1771315200001
+          },
+          {
+            "rate": -0.00003572,
+            "time": 1771344000002
+          },
+          {
+            "rate": 0.00001378,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00013293,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 2.56,
-          "trend": "increasing"
+          "latest": 2.4095,
+          "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 1.6211,
+          "latest": 1.5421,
           "trend": "stable"
         },
         "takerVolume": null
@@ -754,42 +754,18 @@
       "symbol": "VVV",
       "binance_pair": "VVVUSDT",
       "hl": {
-        "funding": -0.000093681,
-        "openInterest": 1989203.34,
-        "premium": -0.0010805113,
-        "oraclePx": 3.7945,
-        "markPx": 3.7865,
-        "dayNtlVlm": 14483849.977037998,
-        "impactBid": 3.784,
-        "impactAsk": 3.7904
+        "funding": -0.0001306327,
+        "openInterest": 2049297.9800000004,
+        "premium": -0.0011962845,
+        "oraclePx": 4.2632,
+        "markPx": 4.2555,
+        "dayNtlVlm": 15032747.015879,
+        "impactBid": 4.2537,
+        "impactAsk": 4.2581
       },
       "binance": {
-        "openInterest": 3190604.82,
+        "openInterest": 3246747.97,
         "fundingHistory": [
-          {
-            "rate": -0.00614991,
-            "time": 1771214400004
-          },
-          {
-            "rate": -0.00512742,
-            "time": 1771228800003
-          },
-          {
-            "rate": -0.00111524,
-            "time": 1771243200000
-          },
-          {
-            "rate": -0.00101627,
-            "time": 1771257600000
-          },
-          {
-            "rate": -0.00051877,
-            "time": 1771272000009
-          },
-          {
-            "rate": -0.00119624,
-            "time": 1771286400008
-          },
           {
             "rate": -0.00055655,
             "time": 1771300800003
@@ -797,67 +773,67 @@
           {
             "rate": -0.0001575,
             "time": 1771315200001
+          },
+          {
+            "rate": -0.00021582,
+            "time": 1771329600000
+          },
+          {
+            "rate": -0.00012746,
+            "time": 1771344000002
+          },
+          {
+            "rate": -0.00014536,
+            "time": 1771358400002
+          },
+          {
+            "rate": -0.00022942,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00036325,
+            "time": 1771387200000
+          },
+          {
+            "rate": -0.00043519,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 0.6669,
+          "latest": 0.6821,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 0.8087,
-          "trend": "decreasing"
+          "latest": 0.7185,
+          "trend": "stable"
         },
         "takerVolume": null
       },
       "sentiment_summary": {
-        "funding_direction": "slightly_bearish",
+        "funding_direction": "bearish_expensive",
         "oi_level": "moderate",
         "crowd_bias": "short_heavy",
-        "smart_money_bias": "neutral",
+        "smart_money_bias": "short_bias",
         "taker_pressure": "unknown",
-        "overall": "mixed"
+        "overall": "slightly_bearish"
       }
     },
     {
       "symbol": "TAO",
       "binance_pair": "TAOUSDT",
       "hl": {
-        "funding": 0.0000059775,
-        "openInterest": 79114.128,
-        "premium": -0.0006350886,
-        "oraclePx": 188.95,
-        "markPx": 188.78,
-        "dayNtlVlm": 19992452.93361999,
-        "impactBid": 188.712,
-        "impactAsk": 188.83
+        "funding": 0.0000125,
+        "openInterest": 77136.876,
+        "premium": 0,
+        "oraclePx": 194.7,
+        "markPx": 194.66,
+        "dayNtlVlm": 18209411.644219987,
+        "impactBid": 194.616,
+        "impactAsk": 194.702
       },
       "binance": {
-        "openInterest": 203776.974,
+        "openInterest": 213013.245,
         "fundingHistory": [
-          {
-            "rate": -0.00015713,
-            "time": 1771214400004
-          },
-          {
-            "rate": -0.00359598,
-            "time": 1771228800003
-          },
-          {
-            "rate": -0.00085105,
-            "time": 1771243200000
-          },
-          {
-            "rate": -0.00018746,
-            "time": 1771257600000
-          },
-          {
-            "rate": -0.00009218,
-            "time": 1771272000009
-          },
-          {
-            "rate": -0.00028027,
-            "time": 1771286400008
-          },
           {
             "rate": -0.00001128,
             "time": 1771300800003
@@ -865,14 +841,38 @@
           {
             "rate": -0.00004713,
             "time": 1771315200001
+          },
+          {
+            "rate": -0.00008365,
+            "time": 1771329600000
+          },
+          {
+            "rate": -0.00008582,
+            "time": 1771344000002
+          },
+          {
+            "rate": -0.00002716,
+            "time": 1771358400002
+          },
+          {
+            "rate": 0.0000262,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00014062,
+            "time": 1771387200000
+          },
+          {
+            "rate": -0.00011032,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 1.5278,
+          "latest": 1.5132,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 1.4216,
+          "latest": 1.4805,
           "trend": "stable"
         },
         "takerVolume": null
@@ -890,42 +890,18 @@
       "symbol": "ASTER",
       "binance_pair": "ASTERUSDT",
       "hl": {
-        "funding": -0.0000162654,
-        "openInterest": 69874240,
-        "premium": -0.000678781,
-        "oraclePx": 0.70715,
-        "markPx": 0.70666,
-        "dayNtlVlm": 10960188.13156,
-        "impactBid": 0.706477,
-        "impactAsk": 0.70667
+        "funding": 0.0000125,
+        "openInterest": 71377244,
+        "premium": -0.0001984072,
+        "oraclePx": 0.7157,
+        "markPx": 0.7154,
+        "dayNtlVlm": 7876285.761099998,
+        "impactBid": 0.7153,
+        "impactAsk": 0.715558
       },
       "binance": {
-        "openInterest": 130602835,
+        "openInterest": 130222548,
         "fundingHistory": [
-          {
-            "rate": -0.0000402,
-            "time": 1771214400004
-          },
-          {
-            "rate": -0.0001141,
-            "time": 1771228800003
-          },
-          {
-            "rate": -0.00000876,
-            "time": 1771243200000
-          },
-          {
-            "rate": -0.00003899,
-            "time": 1771257600000
-          },
-          {
-            "rate": -0.00003685,
-            "time": 1771272000009
-          },
-          {
-            "rate": 0.00005,
-            "time": 1771286400008
-          },
           {
             "rate": 0.00002626,
             "time": 1771300800003
@@ -933,14 +909,38 @@
           {
             "rate": -0.00002263,
             "time": 1771315200001
+          },
+          {
+            "rate": -0.00004413,
+            "time": 1771329600000
+          },
+          {
+            "rate": -0.00000258,
+            "time": 1771344000002
+          },
+          {
+            "rate": 0.00001759,
+            "time": 1771358400002
+          },
+          {
+            "rate": -0.00004166,
+            "time": 1771372800000
+          },
+          {
+            "rate": 8.5e-7,
+            "time": 1771387200000
+          },
+          {
+            "rate": -0.00000103,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 1.4789,
+          "latest": 1.3063,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 2.1056,
+          "latest": 2.2528,
           "trend": "stable"
         },
         "takerVolume": null
@@ -959,29 +959,17 @@
       "binance_pair": "LINKUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 2187533.6,
-        "premium": -0.0001587574,
-        "oraclePx": 8.7555,
-        "markPx": 8.7518,
-        "dayNtlVlm": 3259989.7802300006,
-        "impactBid": 8.75087,
-        "impactAsk": 8.75411
+        "openInterest": 2300330.8,
+        "premium": -0.0004520846,
+        "oraclePx": 8.9585,
+        "markPx": 8.953,
+        "dayNtlVlm": 2757542.6673500002,
+        "impactBid": 8.953,
+        "impactAsk": 8.95445
       },
       "binance": {
-        "openInterest": 8626466.56,
+        "openInterest": 8544773.09,
         "fundingHistory": [
-          {
-            "rate": -0.00002876,
-            "time": 1771113600000
-          },
-          {
-            "rate": -0.00002449,
-            "time": 1771142400002
-          },
-          {
-            "rate": 0.00007101,
-            "time": 1771171200000
-          },
           {
             "rate": 0.00003183,
             "time": 1771200000001
@@ -1001,14 +989,26 @@
           {
             "rate": 0.0001,
             "time": 1771315200001
+          },
+          {
+            "rate": 0.00005641,
+            "time": 1771344000002
+          },
+          {
+            "rate": 0.00004079,
+            "time": 1771372800000
+          },
+          {
+            "rate": 0.00000403,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 1.9019,
+          "latest": 1.9603,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 2.1632,
+          "latest": 2.427,
           "trend": "stable"
         },
         "takerVolume": null
@@ -1026,30 +1026,18 @@
       "symbol": "AVAX",
       "binance_pair": "AVAXUSDT",
       "hl": {
-        "funding": 0.0000099865,
-        "openInterest": 3420565.66,
-        "premium": -0.0004631927,
-        "oraclePx": 9.0675,
-        "markPx": 9.0623,
-        "dayNtlVlm": 2775159.426926,
-        "impactBid": 9.0604,
-        "impactAsk": 9.0633
+        "funding": 0.0000125,
+        "openInterest": 3403725.44,
+        "premium": -0.0001962901,
+        "oraclePx": 9.1701,
+        "markPx": 9.1663,
+        "dayNtlVlm": 2610281.998374,
+        "impactBid": 9.1657,
+        "impactAsk": 9.1683
       },
       "binance": {
-        "openInterest": 7282509,
+        "openInterest": 7566242,
         "fundingHistory": [
-          {
-            "rate": 0.00004932,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0.00007451,
-            "time": 1771142400002
-          },
-          {
-            "rate": -0.00005073,
-            "time": 1771171200000
-          },
           {
             "rate": -0.00012161,
             "time": 1771200000001
@@ -1069,14 +1057,26 @@
           {
             "rate": -0.00002604,
             "time": 1771315200001
+          },
+          {
+            "rate": 0.00002971,
+            "time": 1771344000002
+          },
+          {
+            "rate": 0.0001,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00003168,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 1.8604,
+          "latest": 1.7871,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 1.873,
+          "latest": 1.7723,
           "trend": "stable"
         },
         "takerVolume": null
@@ -1095,29 +1095,17 @@
       "binance_pair": "BCHUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 40117.792,
-        "premium": -0.0001717967,
-        "oraclePx": 558.8,
-        "markPx": 558.64,
-        "dayNtlVlm": 10525750.86229,
-        "impactBid": 558.536,
-        "impactAsk": 558.704
+        "openInterest": 49248.602,
+        "premium": 0,
+        "oraclePx": 568.5,
+        "markPx": 568.52,
+        "dayNtlVlm": 10460950.547280004,
+        "impactBid": 568.465,
+        "impactAsk": 568.549
       },
       "binance": {
-        "openInterest": 388108.007,
+        "openInterest": 384424.932,
         "fundingHistory": [
-          {
-            "rate": -0.00002335,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0.00004119,
-            "time": 1771142400002
-          },
-          {
-            "rate": 0.0001,
-            "time": 1771171200000
-          },
           {
             "rate": 0.00005133,
             "time": 1771200000001
@@ -1137,14 +1125,26 @@
           {
             "rate": -0.00008435,
             "time": 1771315200001
+          },
+          {
+            "rate": -0.0000023,
+            "time": 1771344000002
+          },
+          {
+            "rate": -0.00000606,
+            "time": 1771372800000
+          },
+          {
+            "rate": 0.00001726,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 1.008,
+          "latest": 1.04,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 2.4834,
+          "latest": 2.3593,
           "trend": "stable"
         },
         "takerVolume": null
@@ -1162,30 +1162,18 @@
       "symbol": "LTC",
       "binance_pair": "LTCUSDT",
       "hl": {
-        "funding": 0.0000046213,
-        "openInterest": 282804.6,
-        "premium": -0.0003478579,
-        "oraclePx": 54.62,
-        "markPx": 54.595,
-        "dayNtlVlm": 2472302.0289999987,
-        "impactBid": 54.5716,
-        "impactAsk": 54.601
+        "funding": -0.0000031986,
+        "openInterest": 280177.94,
+        "premium": -0.0004876707,
+        "oraclePx": 54.545,
+        "markPx": 54.508,
+        "dayNtlVlm": 1703501.34016,
+        "impactBid": 54.5062,
+        "impactAsk": 54.5184
       },
       "binance": {
-        "openInterest": 1270009.011,
+        "openInterest": 1251339.822,
         "fundingHistory": [
-          {
-            "rate": 0.00000515,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0.00004087,
-            "time": 1771142400002
-          },
-          {
-            "rate": 0.00004857,
-            "time": 1771171200000
-          },
           {
             "rate": 0.00005494,
             "time": 1771200000001
@@ -1205,14 +1193,26 @@
           {
             "rate": 0.00006486,
             "time": 1771315200001
+          },
+          {
+            "rate": 0.00002673,
+            "time": 1771344000002
+          },
+          {
+            "rate": -0.00002339,
+            "time": 1771372800000
+          },
+          {
+            "rate": 0.00001049,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 2.0665,
+          "latest": 2.2216,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 3.4223,
+          "latest": 3.7894,
           "trend": "stable"
         },
         "takerVolume": null
@@ -1230,30 +1230,18 @@
       "symbol": "DOT",
       "binance_pair": "DOTUSDT",
       "hl": {
-        "funding": -0.0000134637,
-        "openInterest": 2992119.8000000003,
-        "premium": -0.0008644256,
-        "oraclePx": 1.3535,
-        "markPx": 1.352,
-        "dayNtlVlm": 655496.6052000002,
-        "impactBid": 1.35101,
-        "impactAsk": 1.35233
+        "funding": -0.0000031132,
+        "openInterest": 2903830.5999999996,
+        "premium": -0.000866055,
+        "oraclePx": 1.3625,
+        "markPx": 1.3608,
+        "dayNtlVlm": 448539.5748199999,
+        "impactBid": 1.36048,
+        "impactAsk": 1.36132
       },
       "binance": {
-        "openInterest": 24283592.1,
+        "openInterest": 23827164.2,
         "fundingHistory": [
-          {
-            "rate": 0.0001,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0.00001386,
-            "time": 1771142400002
-          },
-          {
-            "rate": 0.00006469,
-            "time": 1771171200000
-          },
           {
             "rate": -0.0000642,
             "time": 1771200000001
@@ -1273,14 +1261,26 @@
           {
             "rate": -0.00000737,
             "time": 1771315200001
+          },
+          {
+            "rate": 0.0000052,
+            "time": 1771344000002
+          },
+          {
+            "rate": 0.00001379,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00007246,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 1.748,
+          "latest": 1.7678,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 1.1394,
+          "latest": 1.2342,
           "trend": "stable"
         },
         "takerVolume": null
@@ -1298,30 +1298,18 @@
       "symbol": "UNI",
       "binance_pair": "UNIUSDT",
       "hl": {
-        "funding": 0.0000068589,
-        "openInterest": 3894905.4000000004,
-        "premium": -0.0005107832,
-        "oraclePx": 3.524,
-        "markPx": 3.5205,
-        "dayNtlVlm": 3108421.462540001,
-        "impactBid": 3.5198,
-        "impactAsk": 3.5222
+        "funding": 4.571e-7,
+        "openInterest": 3886747.4000000004,
+        "premium": -0.0005714286,
+        "oraclePx": 3.57,
+        "markPx": 3.5672,
+        "dayNtlVlm": 2632693.51313,
+        "impactBid": 3.5676,
+        "impactAsk": 3.56796
       },
       "binance": {
-        "openInterest": 19374567,
+        "openInterest": 18752467,
         "fundingHistory": [
-          {
-            "rate": 0.0001,
-            "time": 1771113600000
-          },
-          {
-            "rate": 0.00001136,
-            "time": 1771142400002
-          },
-          {
-            "rate": 0.00003306,
-            "time": 1771171200000
-          },
           {
             "rate": 0.00005815,
             "time": 1771200000001
@@ -1341,14 +1329,26 @@
           {
             "rate": 0.00008216,
             "time": 1771315200001
+          },
+          {
+            "rate": 0.00000866,
+            "time": 1771344000002
+          },
+          {
+            "rate": -0.00004963,
+            "time": 1771372800000
+          },
+          {
+            "rate": -0.00003611,
+            "time": 1771401600000
           }
         ],
         "longShortRatio": {
-          "latest": 1.3602,
+          "latest": 1.3878,
           "trend": "stable"
         },
         "topTraderRatio": {
-          "latest": 2.7888,
+          "latest": 2.7973,
           "trend": "stable"
         },
         "takerVolume": null
@@ -1367,13 +1367,13 @@
       "binance_pair": "NEARUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 8738682.8,
-        "premium": 0,
-        "oraclePx": 1.0464,
-        "markPx": 1.0455,
-        "dayNtlVlm": 1338911.91525,
-        "impactBid": 1.04509,
-        "impactAsk": 1.04652
+        "openInterest": 8779847.799999999,
+        "premium": -0.0001044535,
+        "oraclePx": 1.0531,
+        "markPx": 1.0523,
+        "dayNtlVlm": 1438517.4930900005,
+        "impactBid": 1.05198,
+        "impactAsk": 1.05299
       },
       "binance": null,
       "sentiment_summary": {
@@ -1389,14 +1389,14 @@
       "symbol": "APT",
       "binance_pair": "APTUSDT",
       "hl": {
-        "funding": -0.0000213066,
-        "openInterest": 6875612.1,
-        "premium": -0.0006525285,
-        "oraclePx": 0.9195,
-        "markPx": 0.9185,
-        "dayNtlVlm": 1924616.3888720009,
-        "impactBid": 0.9182,
-        "impactAsk": 0.9189
+        "funding": -0.0000137676,
+        "openInterest": 6837367.9399999995,
+        "premium": -0.0005405405,
+        "oraclePx": 0.925,
+        "markPx": 0.9243,
+        "dayNtlVlm": 1085367.1374419997,
+        "impactBid": 0.9241,
+        "impactAsk": 0.9245
       },
       "binance": null,
       "sentiment_summary": {
@@ -1412,19 +1412,19 @@
       "symbol": "ARB",
       "binance_pair": "ARBUSDT",
       "hl": {
-        "funding": 0.0000125,
-        "openInterest": 26188353,
-        "premium": -0.0006213937,
-        "oraclePx": 0.11265,
-        "markPx": 0.11255,
-        "dayNtlVlm": 1462408.0174859995,
-        "impactBid": 0.1125,
-        "impactAsk": 0.11258
+        "funding": 0.0000021781,
+        "openInterest": 26792153.8,
+        "premium": -0.0005260851,
+        "oraclePx": 0.11405,
+        "markPx": 0.11392,
+        "dayNtlVlm": 865772.618076,
+        "impactBid": 0.11391,
+        "impactAsk": 0.11399
       },
       "binance": null,
       "sentiment_summary": {
         "funding_direction": "neutral",
-        "oi_level": "high",
+        "oi_level": "very_high",
         "crowd_bias": "unknown",
         "smart_money_bias": "unknown",
         "taker_pressure": "unknown",
@@ -1436,13 +1436,13 @@
       "binance_pair": "TRXUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 25343394,
-        "premium": -0.0002342087,
-        "oraclePx": 0.2818,
-        "markPx": 0.28171,
-        "dayNtlVlm": 1310437.1226099995,
-        "impactBid": 0.281634,
-        "impactAsk": 0.281734
+        "openInterest": 25200322,
+        "premium": -0.0003198863,
+        "oraclePx": 0.28135,
+        "markPx": 0.28124,
+        "dayNtlVlm": 854650.8754000005,
+        "impactBid": 0.281175,
+        "impactAsk": 0.28126
       },
       "binance": null,
       "sentiment_summary": {
@@ -1459,18 +1459,18 @@
       "binance_pair": "TONUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 6268571.6,
-        "premium": -0.0002878203,
-        "oraclePx": 1.4245,
-        "markPx": 1.4235,
-        "dayNtlVlm": 6543155.30217,
-        "impactBid": 1.4234,
-        "impactAsk": 1.42409
+        "openInterest": 6172019.6,
+        "premium": -0.0001678909,
+        "oraclePx": 1.4295,
+        "markPx": 1.4289,
+        "dayNtlVlm": 587096.1475200002,
+        "impactBid": 1.42841,
+        "impactAsk": 1.42926
       },
       "binance": null,
       "sentiment_summary": {
         "funding_direction": "neutral",
-        "oi_level": "moderate",
+        "oi_level": "very_high",
         "crowd_bias": "unknown",
         "smart_money_bias": "unknown",
         "taker_pressure": "unknown",
@@ -1482,13 +1482,13 @@
       "binance_pair": "AAVEUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 239039.6,
-        "premium": -0.0002176366,
-        "oraclePx": 124.06,
-        "markPx": 124.01,
-        "dayNtlVlm": 4799723.415100002,
-        "impactBid": 123.9674,
-        "impactAsk": 124.033
+        "openInterest": 247431.5000000001,
+        "premium": 0.0000171446,
+        "oraclePx": 128.32,
+        "markPx": 128.31,
+        "dayNtlVlm": 5311375.700899998,
+        "impactBid": 128.3222,
+        "impactAsk": 128.353
       },
       "binance": null,
       "sentiment_summary": {
@@ -1504,14 +1504,14 @@
       "symbol": "OP",
       "binance_pair": "OPUSDT",
       "hl": {
-        "funding": 0.000005316,
-        "openInterest": 16734391.4,
-        "premium": -0.0013959732,
-        "oraclePx": 0.18625,
-        "markPx": 0.18589,
-        "dayNtlVlm": 283237.610703,
-        "impactBid": 0.18578,
-        "impactAsk": 0.18599
+        "funding": 0.0000081364,
+        "openInterest": 16781941.2,
+        "premium": -0.0002644803,
+        "oraclePx": 0.18905,
+        "markPx": 0.18889,
+        "dayNtlVlm": 247225.8988270001,
+        "impactBid": 0.18882,
+        "impactAsk": 0.189
       },
       "binance": null,
       "sentiment_summary": {
@@ -1528,18 +1528,18 @@
       "binance_pair": "ATOMUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 1423431,
-        "premium": 0,
-        "oraclePx": 2.2325,
-        "markPx": 2.2298,
-        "dayNtlVlm": 2335571.434411999,
-        "impactBid": 2.2283,
-        "impactAsk": 2.2327
+        "openInterest": 1338102.36,
+        "premium": -0.0001305199,
+        "oraclePx": 2.2985,
+        "markPx": 2.2967,
+        "dayNtlVlm": 977727.5812480006,
+        "impactBid": 2.2963,
+        "impactAsk": 2.2982
       },
       "binance": null,
       "sentiment_summary": {
         "funding_direction": "neutral",
-        "oi_level": "moderate",
+        "oi_level": "very_high",
         "crowd_bias": "unknown",
         "smart_money_bias": "unknown",
         "taker_pressure": "unknown",
@@ -1550,14 +1550,14 @@
       "symbol": "RENDER",
       "binance_pair": "RENDERUSDT",
       "hl": {
-        "funding": -0.0000093695,
-        "openInterest": 804683,
-        "premium": -0.0001876303,
-        "oraclePx": 1.439,
-        "markPx": 1.4368,
-        "dayNtlVlm": 590877.4880900001,
-        "impactBid": 1.43425,
-        "impactAsk": 1.43873
+        "funding": -0.0000070757,
+        "openInterest": 790199.5999999999,
+        "premium": -0.0006828269,
+        "oraclePx": 1.4645,
+        "markPx": 1.4625,
+        "dayNtlVlm": 601848.83765,
+        "impactBid": 1.46153,
+        "impactAsk": 1.4635
       },
       "binance": null,
       "sentiment_summary": {
@@ -1574,13 +1574,13 @@
       "binance_pair": "INJUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 574499.4,
-        "premium": -0.0001746442,
-        "oraclePx": 3.092,
-        "markPx": 3.0896,
-        "dayNtlVlm": 189478.21997,
-        "impactBid": 3.08753,
-        "impactAsk": 3.09146
+        "openInterest": 566937.7999999999,
+        "premium": -0.0004117459,
+        "oraclePx": 3.133,
+        "markPx": 3.1299,
+        "dayNtlVlm": 236752.00444,
+        "impactBid": 3.12896,
+        "impactAsk": 3.13171
       },
       "binance": null,
       "sentiment_summary": {
@@ -1597,13 +1597,13 @@
       "binance_pair": "FILUSDT",
       "hl": {
         "funding": 0.0000125,
-        "openInterest": 2862228.2,
-        "premium": -0.0001249154,
-        "oraclePx": 0.96065,
-        "markPx": 0.95972,
-        "dayNtlVlm": 530311.2051179999,
-        "impactBid": 0.95935,
-        "impactAsk": 0.96053
+        "openInterest": 2621365.6,
+        "premium": -0.0000206718,
+        "oraclePx": 0.9675,
+        "markPx": 0.96649,
+        "dayNtlVlm": 671594.232778,
+        "impactBid": 0.96616,
+        "impactAsk": 0.96748
       },
       "binance": null,
       "sentiment_summary": {

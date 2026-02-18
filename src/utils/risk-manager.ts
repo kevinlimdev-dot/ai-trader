@@ -205,6 +205,30 @@ export class RiskManager {
     return drawdown >= trailPct;
   }
 
+  getProgressiveTrailPct(peakPnlPct: number): number {
+    const tiers = this.overrides?.progressive_trailing?.tiers;
+    if (!tiers || tiers.length === 0) {
+      return this.overrides?.trailing_stop.trail_pct ?? this.config.trade_agent.trailing_stop.trail_pct;
+    }
+    let trailPct = tiers[0].trail_pct;
+    for (const tier of tiers) {
+      if (peakPnlPct >= tier.profit_pct) {
+        trailPct = tier.trail_pct;
+      }
+    }
+    return trailPct;
+  }
+
+  shouldTriggerProgressiveTrailing(currentPnlPct: number, peakPnlPct: number): boolean {
+    if (!this.config.trade_agent.trailing_stop.enabled) return false;
+    if (peakPnlPct <= 0) return false;
+    const activationPct = this.overrides?.trailing_stop.activation_pct ?? this.config.trade_agent.trailing_stop.activation_pct;
+    if (peakPnlPct < activationPct) return false;
+    const trailPct = this.getProgressiveTrailPct(peakPnlPct);
+    const drawdown = peakPnlPct - currentPnlPct;
+    return drawdown >= trailPct;
+  }
+
   // ─── Price Anomaly ───
 
   isPriceAnomaly(oldPrice: number, newPrice: number): boolean {

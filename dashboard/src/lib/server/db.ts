@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { Database } from 'bun:sqlite';
 import { resolve } from 'path';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { parse, stringify } from 'yaml';
@@ -6,9 +6,9 @@ import { parse, stringify } from 'yaml';
 const PROJECT_ROOT = resolve(process.cwd(), '..');
 const DB_PATH = resolve(PROJECT_ROOT, 'data', 'ai-trader.db');
 
-let db: Database.Database | null = null;
+let db: Database | null = null;
 
-function getDb(): Database.Database {
+function getDb(): Database {
 	if (!db) {
 		db = new Database(DB_PATH);
 		db.exec('PRAGMA journal_mode=WAL');
