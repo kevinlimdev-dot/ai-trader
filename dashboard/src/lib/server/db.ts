@@ -1,4 +1,4 @@
-import { Database } from 'bun:sqlite';
+import Database from 'better-sqlite3';
 import { resolve } from 'path';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { parse, stringify } from 'yaml';
@@ -6,9 +6,9 @@ import { parse, stringify } from 'yaml';
 const PROJECT_ROOT = resolve(process.cwd(), '..');
 const DB_PATH = resolve(PROJECT_ROOT, 'data', 'ai-trader.db');
 
-let db: Database | null = null;
+let db: Database.Database | null = null;
 
-function getDb(): Database {
+function getDb(): Database.Database {
 	if (!db) {
 		db = new Database(DB_PATH);
 		db.exec('PRAGMA journal_mode=WAL');
@@ -39,18 +39,18 @@ export function getDashboardData(hlPositions?: { coin: string; side: string; unr
 	const d = getDb();
 	const today = new Date().toISOString().split('T')[0];
 
-	const todayTrades = d.query(`SELECT * FROM trades WHERE date(timestamp_open) = ?`).all(today) as any[];
+	const todayTrades = d.prepare(`SELECT * FROM trades WHERE date(timestamp_open) = ?`).all(today) as any[];
 	// external_close는 봇이 아닌 외부에서 청산된 것이므로 실제 거래 카운트에서 제외
 	const realTrades = todayTrades.filter((t: any) => t.exit_reason !== 'external_close');
-	const openTrades = d.query(`SELECT * FROM trades WHERE status IN ('open', 'paper')`).all() as any[];
-	const latestBalance = d.query(`SELECT * FROM balance_snapshots ORDER BY id DESC LIMIT 1`).get() as any | null;
+	const openTrades = d.prepare(`SELECT * FROM trades WHERE status IN ('open', 'paper')`).all() as any[];
+	const latestBalance = d.prepare(`SELECT * FROM balance_snapshots ORDER BY id DESC LIMIT 1`).get() as any | null;
 	const todayPnl = realTrades.filter((t: any) => t.pnl !== null).reduce((sum: number, t: any) => sum + (t.pnl || 0), 0);
 	const todayFees = realTrades.filter((t: any) => t.fees !== null).reduce((sum: number, t: any) => sum + (t.fees || 0), 0);
 	const closedToday = realTrades.filter((t: any) => t.status === 'closed');
 	const wins = closedToday.filter((t: any) => t.pnl > 0).length;
 	const winRate = closedToday.length > 0 ? (wins / closedToday.length) * 100 : 0;
 
-	const recentTrades = d.query(`SELECT * FROM trades ORDER BY id DESC LIMIT 25`).all() as any[];
+	const recentTrades = d.prepare(`SELECT * FROM trades ORDER BY id DESC LIMIT 25`).all() as any[];
 
 	// HL 실시간 데이터로 open 거래 PnL 보강
 	if (hlPositions && hlPositions.length > 0) {
@@ -95,12 +95,12 @@ export function getTrades(opts: { page: number; limit: number; symbol?: string; 
 	if (opts.status) { conditions.push('status = ?'); params.push(opts.status); }
 
 	const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-	const countResult = d.query(`SELECT COUNT(*) as cnt FROM trades ${where}`).get(...params) as { cnt: number };
+	const countResult = d.prepare(`SELECT COUNT(*) as cnt FROM trades ${where}`).get(...params) as { cnt: number };
 	const total = countResult.cnt;
 
 	const offset = (opts.page - 1) * opts.limit;
 	const allParams = [...params, opts.limit, offset];
-	const rows = d.query(`SELECT * FROM trades ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...allParams) as any[];
+	const rows = d.prepare(`SELECT * FROM trades ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...allParams) as any[];
 
 	return { trades: rows, total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit) };
 }
@@ -109,7 +109,7 @@ export function getTrades(opts: { page: number; limit: number; symbol?: string; 
 
 export function getOpenPositions() {
 	const d = getDb();
-	return d.query(`SELECT * FROM trades WHERE status IN ('open', 'paper') ORDER BY id DESC`).all() as any[];
+	return d.prepare(`SELECT * FROM trades WHERE status IN ('open', 'paper') ORDER BY id DESC`).all() as any[];
 }
 
 // ─── Signals ───
@@ -134,9 +134,9 @@ export function getLatestSnapshots() {
 
 export function getWalletData() {
 	const d = getDb();
-	const latestBalance = d.query(`SELECT * FROM balance_snapshots ORDER BY id DESC LIMIT 1`).get() as any | null;
-	const transfers = d.query(`SELECT * FROM wallet_transfers ORDER BY id DESC LIMIT 20`).all() as any[];
-	const balanceHistory = d.query(`SELECT * FROM balance_snapshots ORDER BY id DESC LIMIT 50`).all() as any[];
+	const latestBalance = d.prepare(`SELECT * FROM balance_snapshots ORDER BY id DESC LIMIT 1`).get() as any | null;
+	const transfers = d.prepare(`SELECT * FROM wallet_transfers ORDER BY id DESC LIMIT 20`).all() as any[];
+	const balanceHistory = d.prepare(`SELECT * FROM balance_snapshots ORDER BY id DESC LIMIT 50`).all() as any[];
 
 	return { balance: latestBalance, transfers, balanceHistory };
 }
@@ -145,7 +145,7 @@ export function getWalletData() {
 
 export function getRecentSnapshotsFromDb(symbol: string, limit: number = 100) {
 	const d = getDb();
-	return d.query(`SELECT * FROM snapshots WHERE symbol = ? ORDER BY id DESC LIMIT ?`).all(symbol, limit) as any[];
+	return d.prepare(`SELECT * FROM snapshots WHERE symbol = ? ORDER BY id DESC LIMIT ?`).all(symbol, limit) as any[];
 }
 
 // ─── Live Prices (latest snapshot per symbol) ───
@@ -165,7 +165,7 @@ export function getLatestPrices(): LivePrice[] {
 
 	const prices: LivePrice[] = [];
 	for (const sym of symbols) {
-		const row = d.query(`SELECT * FROM snapshots WHERE symbol = ? ORDER BY id DESC LIMIT 1`).get(sym) as any | null;
+		const row = d.prepare(`SELECT * FROM snapshots WHERE symbol = ? ORDER BY id DESC LIMIT 1`).get(sym) as any | null;
 		if (row) {
 			prices.push({
 				symbol: sym,
@@ -193,7 +193,7 @@ export function getLatestPricesWithChange(): PriceWithChange[] {
 
 	const prices: PriceWithChange[] = [];
 	for (const sym of symbols) {
-		const rows = d.query(`SELECT * FROM snapshots WHERE symbol = ? ORDER BY id DESC LIMIT 2`).all(sym) as any[];
+		const rows = d.prepare(`SELECT * FROM snapshots WHERE symbol = ? ORDER BY id DESC LIMIT 2`).all(sym) as any[];
 		if (rows.length > 0) {
 			const latest = rows[0];
 			const prev = rows.length > 1 ? rows[1] : null;
@@ -515,7 +515,7 @@ export function syncPositionsWithHl(hlPositions: HlLivePosition[]): { synced: nu
 	const result = { synced: 0, closed: 0, updated: 0 };
 	try {
 		const d = getDb();
-		const openTrades = d.query(`SELECT * FROM trades WHERE status IN ('open', 'paper')`).all() as any[];
+		const openTrades = d.prepare(`SELECT * FROM trades WHERE status IN ('open', 'paper')`).all() as any[];
 
 		for (const trade of openTrades) {
 			// 코인 + 방향으로 정확히 매칭
@@ -525,13 +525,13 @@ export function syncPositionsWithHl(hlPositions: HlLivePosition[]): { synced: nu
 
 			if (!hlMatch) {
 				// HL에 해당 방향 포지션이 없으면 외부에서 청산된 것
-				d.query(`UPDATE trades SET status = 'closed', exit_reason = 'external_close', timestamp_close = ? WHERE id = ?`)
+				d.prepare(`UPDATE trades SET status = 'closed', exit_reason = 'external_close', timestamp_close = ? WHERE id = ?`)
 					.run(new Date().toISOString(), trade.id);
 				console.log(`[Sync] ${trade.symbol} ${trade.side} (id: ${trade.id}) 외부 청산 감지 → closed`);
 				result.closed++;
 			} else {
 				// 매칭된 포지션의 미실현 PnL 업데이트
-				d.query(`UPDATE trades SET pnl = ?, peak_pnl_pct = ? WHERE id = ?`)
+				d.prepare(`UPDATE trades SET pnl = ?, peak_pnl_pct = ? WHERE id = ?`)
 					.run(hlMatch.unrealizedPnl, hlMatch.returnOnEquity * 100, trade.id);
 				result.updated++;
 			}
@@ -593,7 +593,7 @@ export function getConfigSymbols(): string[] {
 
 export function getApiErrorCount(): number {
 	const d = getDb();
-	const row = d.query(`SELECT value FROM api_state WHERE key = 'consecutive_api_errors'`).get() as { value: string } | null;
+	const row = d.prepare(`SELECT value FROM api_state WHERE key = 'consecutive_api_errors'`).get() as { value: string } | null;
 	return row ? parseInt(row.value, 10) : 0;
 }
 

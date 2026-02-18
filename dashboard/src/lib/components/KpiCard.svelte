@@ -18,10 +18,10 @@
 	};
 </script>
 
-<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-	<p class="text-xs text-[var(--text-secondary)] uppercase tracking-wider mb-1">{label}</p>
-	<p class="text-2xl font-bold {colorMap[color]}">{value}</p>
+<div class="box min-w-0 overflow-hidden">
+	<p class="text-[10px] sm:text-xs text-[var(--text-secondary)] uppercase tracking-wider mb-1 truncate">{label}</p>
+	<p class="text-lg sm:text-2xl font-bold {colorMap[color]} truncate">{value}</p>
 	{#if sub}
-		<p class="text-xs text-[var(--text-secondary)] mt-1">{sub}</p>
+		<p class="text-[10px] sm:text-xs text-[var(--text-secondary)] mt-1 truncate">{sub}</p>
 	{/if}
 </div>

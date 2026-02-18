@@ -50,7 +50,7 @@
 	<h1 class="text-2xl font-bold">Trade History</h1>
 
 	<!-- Filters -->
-	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
+	<div class="box">
 		<div class="flex flex-wrap gap-3 items-end">
 			<div>
 				<label class="block text-xs text-[var(--text-secondary)] mb-1">Symbol</label>
@@ -79,7 +79,7 @@
 	</div>
 
 	<!-- Table -->
-	<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl overflow-hidden">
+	<div class="box !p-0 overflow-hidden">
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="text-[var(--text-secondary)] text-xs uppercase border-b border-[var(--border)] bg-[var(--bg-secondary)]">
@@ -133,7 +133,7 @@
 						</tr>
 					{/if}
 				{:else}
-					<tr><td colspan="10" class="py-12 text-center text-[var(--text-secondary)]">No trades found</td></tr>
+					<tr><td colspan="10" class="py-12 text-center text-xs text-[var(--text-secondary)]">거래 내역 없음</td></tr>
 				{/each}
 			</tbody>
 		</table>

@@ -81,7 +81,7 @@
 	{#if positions.length > 0}
 		<div class="grid gap-4">
 			{#each positions as pos}
-				<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
+				<div class="box">
 					<div class="flex items-start justify-between mb-4">
 						<div class="flex items-center gap-3">
 							<span class="text-lg font-bold">{pos.symbol}</span>
@@ -131,7 +131,7 @@
 			{/each}
 		</div>
 	{:else}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-12 text-center">
+		<div class="box text-center">
 			<p class="text-[var(--text-secondary)] text-lg">No open positions</p>
 			<p class="text-[var(--text-secondary)] text-sm mt-2">Positions will appear here when the bot opens trades.</p>
 		</div>

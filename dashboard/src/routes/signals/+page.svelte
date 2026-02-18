@@ -118,7 +118,7 @@
 
 	<!-- AI 파라미터 조정 알림 -->
 	{#if aiAdjustment}
-		<div class="bg-[var(--bg-card)] border border-[var(--accent-yellow)]/30 rounded-xl p-3">
+		<div class="box !border-[var(--accent-yellow)]/30">
 			<div class="flex items-center justify-between mb-2">
 				<div class="flex items-center gap-2">
 					<svg class="w-4 h-4 text-[var(--accent-yellow)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -155,7 +155,7 @@
 	{#if activeSignals.length > 0}
 		<div class="space-y-2">
 			{#each activeSignals as sig}
-				<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl overflow-hidden">
+				<div class="box !p-0 overflow-hidden">
 					<button
 						onclick={() => expandedSignal = expandedSignal === sig.symbol ? null : sig.symbol}
 						class="w-full flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-[var(--border)]/10 transition-colors"
@@ -201,7 +201,7 @@
 							{/if}
 
 							<!-- Indicators -->
-							<div class="grid grid-cols-5 gap-2">
+							<div class="grid grid-cols-3 md:grid-cols-5 gap-2">
 								{#if sig.analysis?.spread}
 									<div class="bg-[var(--bg-secondary)] rounded-lg p-2.5 text-center">
 										<p class="text-[9px] text-[var(--text-secondary)] uppercase mb-1">Spread</p>
@@ -300,18 +300,18 @@
 			{/each}
 		</div>
 	{:else if signals?.signals}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-8 text-center">
+		<div class="box text-center">
 			<p class="text-[var(--text-secondary)]">모든 코인 HOLD — 진입 조건 미충족</p>
 		</div>
 	{:else}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-8 text-center">
+		<div class="box text-center">
 			<p class="text-[var(--text-secondary)]">시그널 없음 — 분석 실행을 눌러주세요</p>
 		</div>
 	{/if}
 
 	<!-- HOLD 시그널 (접기/펼치기) -->
 	{#if holdSignals.length > 0}
-		<div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-3">
+		<div class="box">
 			<button onclick={() => showHold = !showHold} class="w-full flex items-center justify-between cursor-pointer">
 				<span class="text-[10px] text-[var(--text-secondary)] uppercase font-semibold">HOLD ({holdSignals.length}개)</span>
 				<svg class="w-3.5 h-3.5 text-[var(--text-secondary)] transition-transform {showHold ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
