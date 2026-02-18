@@ -112,7 +112,7 @@
 
 <div class="overflow-x-auto">
 	<table class="w-full {fontSize}">
-		<thead class="sticky top-0 bg-[var(--bg-card)] z-10">
+		<thead class="sticky top-0 bg-black z-10">
 			<tr class="text-[var(--text-secondary)] {headSize} uppercase border-b border-[var(--border)]">
 				<th class="text-left {cellPy} {cellPx}">Time</th>
 				<th class="text-left {cellPy} {cellPx}">Sym</th>
