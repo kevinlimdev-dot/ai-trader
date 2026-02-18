@@ -26,7 +26,7 @@
 				horzLines: { color: '#2a2f42', style: LineStyle.Dotted },
 			},
 			width: chartContainer.clientWidth,
-			height: 280,
+			height: 750,
 			rightPriceScale: {
 				borderColor: '#2a2f42',
 			},

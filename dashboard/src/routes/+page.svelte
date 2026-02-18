@@ -1018,19 +1018,19 @@
 					<PriceChart symbol={chartSymbol} data={chartData[chartSymbol]} />
 				{/key}
 			{:else}
-				<div class="flex items-center justify-center h-[280px]">
-					<p class="text-xs text-[var(--text-secondary)]">차트 데이터 로딩 중...</p>
-				</div>
+			<div class="flex items-center justify-center h-[750px]">
+				<p class="text-xs text-[var(--text-secondary)]">차트 데이터 로딩 중...</p>
+			</div>
 			{/if}
 		</div>
 
 		<!-- Recent Trades -->
-		<div class="box min-w-0">
-			<div class="flex items-center justify-between mb-1">
+		<div class="box min-w-0 flex flex-col" style="max-height: 830px;">
+			<div class="flex items-center justify-between mb-1 flex-shrink-0">
 				<h2 class="box-title">최근 거래</h2>
 				<a href="/trades" class="text-[10px] text-[var(--accent-green)] hover:underline">전체 보기</a>
 			</div>
-			<div class="overflow-x-auto -mx-3 px-3">
+			<div class="overflow-x-auto overflow-y-auto flex-1 -mx-3 px-3">
 				<TradesTable trades={dashboard.recentTrades} mini {livePrices} onSymbolClick={selectChartSymbol} />
 			</div>
 		</div>
