@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import type { WalletAddresses, SetupSummary } from '$lib/types';
+	import { isPrivate, togglePrivacy, maskAddr } from '$lib/privacy.svelte';
 
 	interface Props {
 		mode?: string;
@@ -79,7 +80,7 @@
 {#if showWarnings}
 	<div class="fixed inset-0 z-[60] flex items-center justify-center p-4">
 		<button class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick={() => showWarnings = false} aria-label="Close"></button>
-		<div class="relative bg-[var(--bg-secondary)] border border-[#333] rounded-md w-full max-w-lg max-h-[80vh] overflow-y-auto shadow-2xl">
+		<div class="relative bg-[var(--bg-secondary)] border border-[#333] rounded-[10px] w-full max-w-lg max-h-[80vh] overflow-y-auto shadow-2xl">
 			<div class="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] sticky top-0 bg-[var(--bg-secondary)]">
 				<h3 class="text-sm font-semibold text-white">Setup Status</h3>
 				<button onclick={() => showWarnings = false} class="text-[var(--text-secondary)] hover:text-white cursor-pointer" aria-label="Close">
@@ -128,9 +129,9 @@
 		lg:translate-x-0 lg:sticky lg:z-auto"
 >
 	<!-- Title -->
-	<div class="px-4 pt-4 pb-3 border-b border-[var(--border)]">
+	<div class="px-5 pt-5 pb-4 border-b border-[var(--border)]">
 		<div class="flex items-center justify-between">
-			<h1 class="text-lg font-bold text-white">AI Trader</h1>
+			<h1 class="text-xl font-bold text-white tracking-tight">AI-Trader</h1>
 			<button class="lg:hidden text-[var(--text-secondary)] hover:text-white" onclick={onclose} aria-label="Close">
 				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -140,8 +141,8 @@
 	</div>
 
 	<!-- Bot Status -->
-	<div class="px-3 py-3 border-b border-[var(--border)]">
-		<p class="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2 px-1">Bot Status</p>
+	<div class="px-4 py-3 border-b border-[var(--border)]">
+		<p class="text-[10px] font-semibold text-[#9e9e9e] uppercase tracking-wider mb-2 px-1">Bot Status</p>
 		<div class="space-y-1.5">
 			<!-- LIVE / PAPER toggle -->
 			<button
@@ -223,46 +224,63 @@
 	</div>
 
 	<!-- Navigation -->
-	<nav class="flex-1 p-2 space-y-0.5 overflow-y-auto">
+	<nav class="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
 		{#each nav as item}
 			{@const active = page.url.pathname === item.href || (item.href !== '/' && page.url.pathname.startsWith(item.href))}
 			<button
 				onclick={() => handleNav(item.href)}
-				class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors w-full text-left
-					{active ? 'bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
+				class="flex items-center gap-4 px-4 py-3 rounded-[10px] text-sm font-medium transition-all w-full text-left
+					{active
+						? 'bg-[#3a6ff8] text-white shadow-[4px_4px_32px_0px_rgba(58,111,248,0.15)]'
+						: 'text-[#9e9e9e] hover:bg-[var(--bg-hover)] hover:text-white'}"
 			>
-				<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+				<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width={active ? '2' : '1.5'}>
 					<path stroke-linecap="round" stroke-linejoin="round" d={item.icon} />
 				</svg>
-				{item.label}
+				<span class={active ? 'font-semibold' : ''}>{item.label}</span>
 			</button>
 		{/each}
 	</nav>
 
 	<!-- Wallets -->
-	<div class="mx-2 mb-2 px-3 py-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
-		<div class="flex items-center gap-1.5 mb-2">
-			<svg class="w-3.5 h-3.5 text-[var(--accent-green)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-			</svg>
-			<span class="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Wallets</span>
+	<div class="mx-3 mb-3 px-3 py-2.5 rounded-[10px] bg-[var(--bg-card)] border border-[var(--border)]">
+		<div class="flex items-center justify-between mb-2">
+			<div class="flex items-center gap-1.5">
+				<svg class="w-3.5 h-3.5 text-[var(--accent-green)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+				</svg>
+				<span class="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Wallets</span>
+			</div>
+			<button
+				onclick={togglePrivacy}
+				class="p-1 rounded-md text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+				title={isPrivate() ? '주소 보기' : '주소 숨기기'}
+			>
+				{#if isPrivate()}
+					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" /></svg>
+				{:else}
+					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+				{/if}
+			</button>
 		</div>
 
 		{#if walletAddresses?.hyperliquid}
 			<div class="mb-1.5">
 				<p class="text-[10px] text-[var(--accent-purple)] font-medium mb-0.5">HyperLiquid</p>
 				<button
-					onclick={() => walletAddresses?.hyperliquid && copyAddr(walletAddresses.hyperliquid.address, 'hl')}
+					onclick={() => !isPrivate() && walletAddresses?.hyperliquid && copyAddr(walletAddresses.hyperliquid.address, 'hl')}
 					class="flex items-center gap-1 w-full group cursor-pointer"
-					title={walletAddresses.hyperliquid.address}
+					title={isPrivate() ? '주소 숨김' : walletAddresses.hyperliquid.address}
 				>
 					<code class="text-[10px] font-mono text-[var(--text-primary)] bg-black/30 px-1.5 py-0.5 rounded truncate flex-1 text-left group-hover:bg-[var(--bg-hover)] transition-colors">
-						{truncateAddr(walletAddresses.hyperliquid.address)}
+						{isPrivate() ? maskAddr(walletAddresses.hyperliquid.address) : truncateAddr(walletAddresses.hyperliquid.address)}
 					</code>
-					{#if copied === 'hl'}
-						<svg class="w-3 h-3 text-[var(--accent-green)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-					{:else}
-						<svg class="w-3 h-3 text-[var(--text-secondary)] flex-shrink-0 opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+					{#if !isPrivate()}
+						{#if copied === 'hl'}
+							<svg class="w-3 h-3 text-[var(--accent-green)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+						{:else}
+							<svg class="w-3 h-3 text-[var(--text-secondary)] flex-shrink-0 opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+						{/if}
 					{/if}
 				</button>
 			</div>
@@ -272,24 +290,26 @@
 			<div>
 				<p class="text-[10px] text-[var(--accent-blue)] font-medium mb-0.5">Coinbase</p>
 				<button
-					onclick={() => walletAddresses?.coinbase?.address && copyAddr(walletAddresses.coinbase.address, 'cb')}
+					onclick={() => !isPrivate() && walletAddresses?.coinbase?.address && copyAddr(walletAddresses.coinbase.address, 'cb')}
 					class="flex items-center gap-1 w-full group cursor-pointer"
-					title={walletAddresses.coinbase.address}
+					title={isPrivate() ? '주소 숨김' : walletAddresses.coinbase.address}
 				>
 					<code class="text-[10px] font-mono text-[var(--text-primary)] bg-black/30 px-1.5 py-0.5 rounded truncate flex-1 text-left group-hover:bg-[var(--bg-hover)] transition-colors">
-						{truncateAddr(walletAddresses.coinbase.address)}
+						{isPrivate() ? maskAddr(walletAddresses.coinbase.address) : truncateAddr(walletAddresses.coinbase.address)}
 					</code>
-					{#if copied === 'cb'}
-						<svg class="w-3 h-3 text-[var(--accent-green)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-					{:else}
-						<svg class="w-3 h-3 text-[var(--text-secondary)] flex-shrink-0 opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+					{#if !isPrivate()}
+						{#if copied === 'cb'}
+							<svg class="w-3 h-3 text-[var(--accent-green)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+						{:else}
+							<svg class="w-3 h-3 text-[var(--text-secondary)] flex-shrink-0 opacity-50 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+						{/if}
 					{/if}
 				</button>
 			</div>
 		{/if}
 	</div>
 
-	<div class="p-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]">
+	<div class="px-5 py-3 border-t border-[var(--border)] text-[11px] text-[#9e9e9e]">
 		v1.0 &middot; Svelte 5
 	</div>
 </aside>

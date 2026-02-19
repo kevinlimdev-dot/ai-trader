@@ -4,6 +4,7 @@
 	import SignalBadge from '$lib/components/SignalBadge.svelte';
 	import PriceChart from '$lib/components/PriceChart.svelte';
 	import type { DashboardData, BotResult, LivePrice, WalletAddresses } from '$lib/types';
+	import { isPrivate, maskAddr } from '$lib/privacy.svelte';
 
 	interface TradableCoin {
 		name: string;
@@ -1156,20 +1157,22 @@
 						<span class="text-[9px] px-1 py-0.5 rounded bg-[var(--accent-purple)]/15 text-[var(--accent-purple)]">Arbitrum</span>
 					</div>
 					<div class="flex items-center gap-2">
-						<code class="flex-1 text-xs font-mono text-[var(--text-primary)] bg-[var(--bg-card)] px-2.5 py-2 rounded border border-[var(--border)] break-all select-all">
-							{walletAddresses.hyperliquid.address}
+						<code class="flex-1 text-xs font-mono text-[var(--text-primary)] bg-[var(--bg-card)] px-2.5 py-2 rounded border border-[var(--border)] break-all {isPrivate() ? '' : 'select-all'}">
+							{isPrivate() ? maskAddr(walletAddresses.hyperliquid.address) : walletAddresses.hyperliquid.address}
 						</code>
-						<button
-							onclick={() => walletAddresses?.hyperliquid && copyAddress(walletAddresses.hyperliquid.address, 'hl_main')}
-							class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-green)] text-white hover:opacity-90 transition-opacity cursor-pointer"
-							title="주소 복사"
-						>
-							{#if copiedId === 'hl_main'}
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-							{:else}
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-							{/if}
-						</button>
+						{#if !isPrivate()}
+							<button
+								onclick={() => walletAddresses?.hyperliquid && copyAddress(walletAddresses.hyperliquid.address, 'hl_main')}
+								class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-green)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+								title="주소 복사"
+							>
+								{#if copiedId === 'hl_main'}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+								{:else}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+								{/if}
+							</button>
+						{/if}
 					</div>
 					<!-- Arbitrum → HL 자동입금 -->
 					<div class="mt-2 pt-2 border-t border-[var(--border)]">
@@ -1221,20 +1224,22 @@
 						<span class="text-[9px] px-1 py-0.5 rounded bg-[var(--accent-green)]/15 text-[var(--accent-green)]">Base</span>
 					</div>
 					<div class="flex items-center gap-2">
-						<code class="flex-1 text-xs font-mono text-[var(--text-primary)] bg-[var(--bg-card)] px-2.5 py-2 rounded border border-[var(--border)] break-all select-all">
-							{walletAddresses.coinbase.address}
+						<code class="flex-1 text-xs font-mono text-[var(--text-primary)] bg-[var(--bg-card)] px-2.5 py-2 rounded border border-[var(--border)] break-all {isPrivate() ? '' : 'select-all'}">
+							{isPrivate() ? maskAddr(walletAddresses.coinbase.address) : walletAddresses.coinbase.address}
 						</code>
-						<button
-							onclick={() => walletAddresses?.coinbase?.address && copyAddress(walletAddresses.coinbase.address, 'cb_main')}
-							class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-green)] text-white hover:opacity-90 transition-opacity cursor-pointer"
-							title="주소 복사"
-						>
-							{#if copiedId === 'cb_main'}
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-							{:else}
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-							{/if}
-						</button>
+						{#if !isPrivate()}
+							<button
+								onclick={() => walletAddresses?.coinbase?.address && copyAddress(walletAddresses.coinbase.address, 'cb_main')}
+								class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-green)] text-white hover:opacity-90 transition-opacity cursor-pointer"
+								title="주소 복사"
+							>
+								{#if copiedId === 'cb_main'}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+								{:else}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+								{/if}
+							</button>
+						{/if}
 					</div>
 				</div>
 			{/if}

@@ -79,10 +79,10 @@
 
 	<div class="flex-1 flex flex-col min-w-0">
 		<!-- Mobile top bar -->
-		<div class="flex lg:hidden items-center justify-between px-4 py-2.5 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
+		<div class="flex lg:hidden items-center justify-between px-4 py-3 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
 			<div class="flex items-center gap-3">
 				<button
-					class="text-[var(--text-secondary)] hover:text-white p-1 -ml-1"
+					class="text-[#9e9e9e] hover:text-white p-1 -ml-1"
 					onclick={() => sidebarOpen = true}
 					aria-label="Open menu"
 				>
@@ -95,7 +95,7 @@
 			<button
 				onclick={toggleMode}
 				disabled={switchingMode}
-				class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold uppercase cursor-pointer transition-all
+				class="flex items-center gap-1.5 px-2.5 py-1 rounded-[8px] border text-xs font-bold uppercase cursor-pointer transition-all
 					disabled:opacity-50 disabled:cursor-not-allowed
 					{mode === 'live'
 						? 'bg-[var(--accent-red)]/15 border-[var(--accent-red)]/40 text-[var(--accent-red)]'

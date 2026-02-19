@@ -198,7 +198,7 @@
 				<button
 					onclick={() => setStrategy(s.name)}
 					disabled={strategyLoading}
-					class="p-3 rounded-lg border text-left transition-all cursor-pointer
+					class="p-3 rounded-[10px] border text-left transition-all cursor-pointer
 						{currentStrategy === s.name
 							? 'bg-[var(--accent-blue)]/10 border-[var(--accent-blue)]/40'
 							: 'bg-[var(--bg-secondary)] border-[var(--border)] hover:border-[var(--accent-blue)]/30'
