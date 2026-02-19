@@ -3,14 +3,14 @@
 :root {
 	--bg-primary: #000000;
 	--bg-secondary: #171717;
-	--bg-card: #000000;
-	--bg-hover: #222222;
+	--bg-card: #0a0a0a;
+	--bg-hover: #1f1f1f;
 	--border: #2a2a2a;
 	--text-primary: #e4e6ed;
-	--text-secondary: #8b8fa3;
+	--text-secondary: #9e9e9e;
 	--accent-green: #22c55e;
 	--accent-red: #ef4444;
-	--accent-blue: #3b82f6;
+	--accent-blue: #3a6ff8;
 	--accent-yellow: #eab308;
 	--accent-purple: #10b981;
 }
@@ -18,7 +18,7 @@
 body {
 	background-color: var(--bg-primary);
 	color: var(--text-primary);
-	font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 /* Prevent content overflow on mobile */
@@ -29,7 +29,7 @@ table { width: 100%; }
 .box {
 	background: var(--bg-card);
 	border: 0.5px solid #333;
-	border-radius: 6px;
+	border-radius: 10px;
 	padding: 12px;
 }
 @media (min-width: 640px) {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { WalletData, WalletAddresses, BotResult } from '$lib/types';
+	import { isPrivate, maskAddr } from '$lib/privacy.svelte';
 
 	let { data } = $props();
 	let wallet: WalletData = $state(data.wallet as any);
@@ -87,7 +88,7 @@
 <div class="space-y-4">
 	<div class="flex items-center justify-between">
 		<h1 class="text-xl font-bold">Wallet</h1>
-		<button onclick={refreshBalance} disabled={refreshing} class="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer">
+		<button onclick={refreshBalance} disabled={refreshing} class="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-[8px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer">
 			{refreshing ? '갱신 중...' : '잔고 갱신'}
 		</button>
 	</div>
@@ -158,12 +159,14 @@
 					<span class="text-xs font-semibold text-[var(--accent-purple)]">HyperLiquid</span>
 					<span class="text-[9px] px-1 py-0.5 rounded bg-[var(--accent-purple)]/15 text-[var(--accent-purple)]">Arbitrum</span>
 				</div>
-				<div class="flex items-center gap-2">
-					<code class="flex-1 text-xs font-mono bg-[var(--bg-card)] px-2.5 py-2 rounded border border-[var(--border)] break-all select-all">{walletAddresses.hyperliquid.address}</code>
+			<div class="flex items-center gap-2">
+				<code class="flex-1 text-xs font-mono bg-[var(--bg-card)] px-2.5 py-2 rounded border border-[var(--border)] break-all {isPrivate() ? '' : 'select-all'}">{isPrivate() ? maskAddr(walletAddresses.hyperliquid.address) : walletAddresses.hyperliquid.address}</code>
+				{#if !isPrivate()}
 					<button onclick={() => walletAddresses?.hyperliquid && copyAddress(walletAddresses.hyperliquid.address, 'hl')} class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-purple)] text-white hover:opacity-90 cursor-pointer">
 						{#if copiedId === 'hl'}<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>{:else}<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>{/if}
 					</button>
-				</div>
+				{/if}
+			</div>
 				<!-- Arbitrum → HL 자동입금 -->
 				<div class="mt-2 pt-2 border-t border-[var(--border)]">
 					<div class="flex items-center justify-between gap-2">
@@ -197,12 +200,14 @@
 					<span class="text-xs font-semibold text-[var(--accent-blue)]">Coinbase</span>
 					<span class="text-[9px] px-1 py-0.5 rounded bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]">Base</span>
 				</div>
-				<div class="flex items-center gap-2">
-					<code class="flex-1 text-xs font-mono bg-[var(--bg-card)] px-2.5 py-2 rounded border border-[var(--border)] break-all select-all">{walletAddresses.coinbase.address}</code>
+			<div class="flex items-center gap-2">
+				<code class="flex-1 text-xs font-mono bg-[var(--bg-card)] px-2.5 py-2 rounded border border-[var(--border)] break-all {isPrivate() ? '' : 'select-all'}">{isPrivate() ? maskAddr(walletAddresses.coinbase.address) : walletAddresses.coinbase.address}</code>
+				{#if !isPrivate()}
 					<button onclick={() => walletAddresses?.coinbase?.address && copyAddress(walletAddresses.coinbase.address, 'cb')} class="flex-shrink-0 p-2 rounded-lg bg-[var(--accent-blue)] text-white hover:opacity-90 cursor-pointer">
 						{#if copiedId === 'cb'}<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>{:else}<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>{/if}
 					</button>
-				</div>
+				{/if}
+			</div>
 			</div>
 		{/if}
 	</div>
@@ -243,7 +248,7 @@
 								<td class="py-2 px-3"><span class="px-2 py-0.5 rounded text-xs font-medium {tx.direction === 'deposit' ? 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]' : 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'}">{tx.direction}</span></td>
 								<td class="py-2 px-3 text-right font-mono">${Number(tx.amount).toFixed(2)}</td>
 								<td class="py-2 px-3 text-xs">{tx.status}</td>
-								<td class="py-2 px-3 font-mono text-xs text-[var(--text-secondary)]">{tx.tx_hash ? tx.tx_hash.slice(0, 10) + '...' : '-'}</td>
+								<td class="py-2 px-3 font-mono text-xs text-[var(--text-secondary)]">{tx.tx_hash ? (isPrivate() ? maskAddr(tx.tx_hash) : tx.tx_hash.slice(0, 10) + '...') : '-'}</td>
 							</tr>
 						{/each}
 					</tbody>

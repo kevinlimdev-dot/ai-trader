@@ -104,7 +104,7 @@
 		<button
 			onclick={runAnalysis}
 			disabled={running}
-			class="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
+			class="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-[8px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
 		>
 			{running ? '분석 중...' : '분석 실행'}
 		</button>

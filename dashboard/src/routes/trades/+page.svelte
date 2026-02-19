@@ -73,8 +73,8 @@
 					<option value="paper">Paper</option>
 				</select>
 			</div>
-			<button onclick={applyFilters} class="px-4 py-1.5 bg-[var(--accent-blue)] text-white rounded-lg text-sm hover:opacity-90 transition-opacity">Filter</button>
-			<button onclick={clearFilters} class="px-4 py-1.5 bg-[var(--bg-hover)] text-[var(--text-secondary)] rounded-lg text-sm hover:text-white transition-colors">Clear</button>
+			<button onclick={applyFilters} class="px-4 py-1.5 bg-[var(--accent-blue)] text-white rounded-[8px] text-sm font-medium hover:opacity-90 transition-opacity">Filter</button>
+			<button onclick={clearFilters} class="px-4 py-1.5 bg-[var(--bg-hover)] text-[var(--text-secondary)] rounded-[8px] text-sm hover:text-white transition-colors">Clear</button>
 		</div>
 	</div>
 
@@ -149,20 +149,20 @@
 				<button
 					onclick={() => goPage(tradesData.page - 1)}
 					disabled={tradesData.page <= 1}
-					class="px-3 py-1.5 rounded-lg text-sm bg-[var(--bg-card)] border border-[var(--border)] disabled:opacity-30 hover:bg-[var(--bg-hover)] transition-colors"
+					class="px-3 py-1.5 rounded-[8px] text-sm bg-[var(--bg-card)] border border-[var(--border)] disabled:opacity-30 hover:bg-[var(--bg-hover)] transition-colors"
 				>Prev</button>
 				{#each Array.from({ length: Math.min(tradesData.totalPages, 5) }, (_, i) => i + Math.max(1, tradesData.page - 2)) as p}
 					{#if p <= tradesData.totalPages}
 						<button
 							onclick={() => goPage(p)}
-							class="px-3 py-1.5 rounded-lg text-sm border transition-colors {p === tradesData.page ? 'bg-[var(--accent-blue)] border-[var(--accent-blue)] text-white' : 'bg-[var(--bg-card)] border-[var(--border)] hover:bg-[var(--bg-hover)]'}"
+							class="px-3 py-1.5 rounded-[8px] text-sm border transition-colors {p === tradesData.page ? 'bg-[var(--accent-blue)] border-[var(--accent-blue)] text-white' : 'bg-[var(--bg-card)] border-[var(--border)] hover:bg-[var(--bg-hover)]'}"
 						>{p}</button>
 					{/if}
 				{/each}
 				<button
 					onclick={() => goPage(tradesData.page + 1)}
 					disabled={tradesData.page >= tradesData.totalPages}
-					class="px-3 py-1.5 rounded-lg text-sm bg-[var(--bg-card)] border border-[var(--border)] disabled:opacity-30 hover:bg-[var(--bg-hover)] transition-colors"
+					class="px-3 py-1.5 rounded-[8px] text-sm bg-[var(--bg-card)] border border-[var(--border)] disabled:opacity-30 hover:bg-[var(--bg-hover)] transition-colors"
 				>Next</button>
 			</div>
 		</div>

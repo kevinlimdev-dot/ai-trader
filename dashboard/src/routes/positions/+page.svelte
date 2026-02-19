@@ -66,7 +66,7 @@
 		<button
 			onclick={closeAll}
 			disabled={closing || positions.length === 0}
-			class="px-4 py-2 bg-[var(--accent-red)] text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-30"
+			class="px-4 py-2 bg-[var(--accent-red)] text-white rounded-[8px] text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-30"
 		>
 			{closing ? 'Closing...' : 'Close All Positions'}
 		</button>
